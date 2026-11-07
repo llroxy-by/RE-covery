@@ -29,7 +29,7 @@ def save(data):
         if os.path.exists(name): os.unlink(name)
     return data
 
-def read(expected_scene_id=None, max_age=3):
+def read(expected_scene_id=None, max_age=5):
     if os.environ.get('ROBOT_SCENE_URL'):
         try:
             return remote('GET', query={'scene_id': expected_scene_id} if expected_scene_id else {})
