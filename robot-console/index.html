@@ -124,3 +124,6 @@ $('applyTarget').onclick=async()=>{if($('applyTarget').disabled)return;const j=j
 
 log('控制台启动 · 无自动运动');poll();
 </script></html>
+
+<section style="margin:24px;padding:20px;border:1px solid #303a38;border-radius:12px"><h2>桌面物品 · 实时识图</h2><div id="sceneStatus">等待读取识图数据</div><pre id="sceneItems" style="white-space:pre-wrap"></pre></section><script>
+(async function sceneLoop(){try{const r=await fetch('/api/scene',{cache:'no-store'});const d=await r.json();document.getElementById('sceneStatus').textContent=d.ok?'实时 · '+d.age_ms+' ms · '+d.scene_id.slice(0,8):'识图未就绪或已过期（禁止按旧位置抓取）';document.getElementById('sceneItems').textContent=d.ok?JSON.stringify(d.objects||d.tracks,null,2):'';}catch(e){document.getElementById('sceneStatus').textContent='识图接口连接失败';}setTimeout(sceneLoop,500);})();</script>

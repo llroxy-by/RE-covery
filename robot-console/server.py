@@ -1,6 +1,9 @@
 import http.server,json,subprocess,threading,queue,time,secrets,os,shlex,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent
+sys.path.insert(0,str(ROOT.parent/"vision-rescue"))
+import scene_store
+from urllib.parse import urlparse,parse_qs
 ROBOT=os.environ.get('ROBOT_HOST','192.168.167.46')
 ROBOT_USER=os.environ.get('ROBOT_USER','galbot')
 MUX=os.environ.get('ROBOT_SOCK','/tmp/kitt-console-live.sock')
@@ -50,6 +53,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
  def out(self,obj,status=200):
   data=json.dumps(obj).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(data)
  def do_GET(self):
+  if urlparse(self.path).path=='/api/scene':
+   query=parse_qs(urlparse(self.path).query)
+   return self.out(scene_store.read(expected_scene_id=query.get('scene_id',[None])[0]))
   if self.path in ('/presets.js','/joystick.js'):
    b=(ROOT/self.path[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','application/javascript');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b)
   elif self.path=='/':
@@ -62,6 +68,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
    if not 0<=size<=65536:return self.out({'error':'请求过大'},409)
    body=self.rfile.read(size)
   except (ValueError,OSError):return self.out({'error':'无效请求'},400)
+  if urlparse(self.path).path=='/api/scene':
+   key=os.environ.get('ROBOT_SCENE_TOKEN','')
+   if not key or not secrets.compare_digest(self.headers.get('Authorization',''),'Bearer '+key):return self.out({'error':'未授权'},403)
+   try:
+    data=json.loads(body)
+    captured=float(data['captured_at'])
+    if not data.get('ok') or not isinstance(data.get('tracks',data.get('objects')),list):raise ValueError('无效识图结果')
+    if not 0<=time.time()-captured<60:raise ValueError('时间戳过期或机器时钟不同步')
+    data=dict(data,scene_id=secrets.token_hex(16),published_at=time.time(),schema_version=1)
+    return self.out(scene_store.save(data))
+   except (ValueError,KeyError,TypeError):return self.out({'error':'无效识图数据或采集时间'},400)
   if self.headers.get('X-Console-Token')!=TOKEN:return self.out({'error':'未授权'},403)
   if self.headers.get('Origin') not in (None,'http://127.0.0.1:8765','http://localhost:8765'):return self.out({'error':'来源不允许'},403)
   try:

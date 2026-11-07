@@ -42,6 +42,13 @@ class Session:
         obj = dict(obj)
         action = obj.pop('action', 'call')
         if action == 'batch':
+            if obj.get('scene_id'):
+                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+                from scene_store import read
+                snapshot = read(expected_scene_id=obj['scene_id'])
+                if not snapshot.get('ok'):
+                    return {'ok': False, 'error': '识图结果已过期或版本变化，请重新规划', 'scene_id': obj['scene_id']}
+                self.log.append({'scene_id': snapshot['scene_id'], 'captured_at': snapshot['captured_at']})
             results = []
             timing = []
             batch_start = time.monotonic()

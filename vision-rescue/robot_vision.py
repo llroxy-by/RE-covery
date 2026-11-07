@@ -3,6 +3,8 @@ import argparse
 import asyncio
 import json
 import os
+import time
+from scene_store import publish
 from pathlib import Path
 
 from live.server import Bench
@@ -26,7 +28,7 @@ async def run(args):
                 raise RuntimeError('相机消息不是 JPEG')
             if latest.full():
                 latest.get_nowait()
-            latest.put_nowait(jpeg)
+            latest.put_nowait((jpeg,time.time()))
 
     async with websockets.connect(args.camera, max_size=16 * 1024 * 1024) as ws:
         receiver = asyncio.create_task(receive(ws))
@@ -37,7 +39,7 @@ async def run(args):
                 if receiver in done:
                     get.cancel()
                     await receiver
-                jpeg = await get
+                jpeg, captured_at = await get
                 result = await asyncio.get_running_loop().run_in_executor(None, bench.detect, jpeg, 0, 0)
                 if receiver.done():
                     await receiver
@@ -49,6 +51,7 @@ async def run(args):
                 for track in result.get('tracks', []):
                     track['zone'] = None
                 result['zones_calibrated'] = False
+                result = publish(result, captured_at)
                 emit(result)
                 if bench.reader.vlm.given_up and not args.template_only:
                     raise RuntimeError('视觉模型连续失败，停止识别')
