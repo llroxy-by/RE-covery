@@ -1,0 +1,54 @@
+# 抓取与放盒会话
+
+适用于本项目已连接的 G1 / SDK 1.10.0。电脑运行本地客户端，机器人复用已有 SDK；执行器通过 SSH 标准输入在内存运行，不上传文件或安装 SDK。
+
+## 入口
+
+在仓库根目录，复用现有 Python 环境（需要 numpy、opencv-python）：
+
+```sh
+# 当前视角只读识别，不移动或开爪
+.venv-vision/bin/python -B vision-rescue/tools/lowprobe_grasp.py --dry
+
+# 常驻只读会话，从标准输入接收 JSONL
+.venv-vision/bin/python -B vision-rescue/tools/pickplace_session.py
+
+# 只读网页预览
+.venv-vision/bin/python -B vision-rescue/tools/preview_server.py --port 8420
+
+# 离线回归，不连接机器人
+.venv-vision/bin/python -B vision-rescue/tools/test_grasp_safety.py
+```
+
+会话中的只读命令：
+
+```json
+{"cmd":"state"}
+{"action":"capture","tag":"scene","probe":true,"radius":0.18}
+{"action":"quit"}
+```
+
+`ROBOT_HOST` 可指定 SSH 目标，`ROBOT_SOCK` 可指定已有连接的控制套接字；认证交给本机 SSH，不把密码写入源码。默认地址是现场设备的历史地址，换网络后需核对。
+
+现场确认人员、工作区与急停条件后，启动参数 `--execute` 才允许运动。当前入口为开发用 JSONL 工具，不是打开网页即自动抓取的成品。
+
+## 连续执行
+
+`batch` 接收步骤数组，按反馈自动衔接，任一步失败即停止；不需要 AI 每走一步再发送下一步。支持：
+
+- `move`：显式指定 `xyz`、`table_z`、`min_tip` 和 `speed`；始终新建一次性预演并执行同一组关节角，不缓存旧场景下的逆解。
+- `expect_grip`：核对静止状态和允许的开口范围。
+- `capture`：保存本机照片与识别快照。
+- 普通 SDK 命令：例如 `state`、`grip`；运动仍受执行器开关约束。
+
+常驻连接可减少重复初始化；批次内部不会为每一步等待聊天回复。当前移动速度仍是显式参数，运输实测使用 0.08 rad/s，接近使用 0.03–0.06 rad/s。本次没有完成进一步加速调优，不应把后续计划当作已实现。
+
+不要直接重放实测记录里的坐标。物体、盒子、相机位姿、桌面高度和夹爪工具长度必须与当前场景一致。采样 FK 和碰撞服务只能检查其已知模型，不代表现实障碍物已完整建模。
+
+## 兼容与验证范围
+
+旧 `cart` 直接求逆解后下发的入口已拒绝执行，改用 `ikpath` 返回的 `plan_id` 加 `execute_plan`。旧手册里的内嵌源码和旧版抓取脚本未同步迁移，不能据此认为它们仍可直接执行。
+
+`lowprobe_grasp.py --execute` 是实验性自动扫描流程；本次完成的是人工确认目标后的分步抓取/放盒，不是任意场景自动识别抓取验证。
+
+本机 15 项离线回归通过；现场已完成绿色抓取、橙色平放抓取，并放入同一盒子，见 `GRASP_PROGRESS_2026-11-07.md`。照片、逐条运行数据、SSH 认证信息不随代码提交。
