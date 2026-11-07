@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "note": "坐标单位 m / deg，相对机器人 base_link。标定前 center 为 null，实测后填入。",
+  "slots": {
+    "box_A": { "kind": "box", "center": null },
+    "box_B": { "kind": "box", "center": null },
+    "box_C": { "kind": "box", "center": null },
+    "box_D": { "kind": "box", "center": null },
+    "tray":  { "kind": "tray", "center": null },
+    "table_free": { "kind": "table", "center": null }
+  },
+  "objects": [
+    { "id": "block_red",   "color": "red",   "home_slot": "tray",  "width_mm": 40, "tol_mm": 15, "tol_deg": 10 },
+    { "id": "block_blue",  "color": "blue",  "home_slot": "box_A", "width_mm": 40, "tol_mm": 15, "tol_deg": 10 },
+    { "id": "block_green", "color": "green", "home_slot": "box_B", "width_mm": 40, "tol_mm": 15, "tol_deg": 10 }
+  ]
+}

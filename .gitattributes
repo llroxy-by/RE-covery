@@ -1,0 +1,18 @@
+# 统一换行符，避免 Windows / macOS 协作时出现"整个文件都改了"的假 diff
+#
+# 不设的话：本机 core.autocrlf 会把工作区改成 CRLF，而仓库里存的是 LF，
+# 队友在 Mac 上一 clone、一提交，同一个文件就变成 100% 改动，review 无从下手。
+* text=auto eol=lf
+
+# 明确写成二进制的：不要让 git 试图转换或做文本 diff
+*.jpg  binary
+*.jpeg binary
+*.png  binary
+*.npz  binary
+*.glb  binary
+*.stl  binary
+*.pem  binary
+
+# Windows 专用脚本保留 CRLF
+*.bat  text eol=crlf
+*.ps1  text eol=crlf

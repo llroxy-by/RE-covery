@@ -1,0 +1,54 @@
+# RE-covery · 提交规则
+#
+# 这个目录现在有 85 MB，其中两坨不该进代码库：
+#   galbot_ref/      47 MB 机器人 3D 模型（STL/GLB），是参考资料不是代码
+#   vision/records/  27 MB 现场快照照片，跑一次就重新生成
+# 全推上去会让每次 clone 都很难受，而且照片里有现场环境，不该外传。
+
+# ---------------- 密钥 / 证书 ----------------
+# 自签证书里含私钥，绝对不能提交
+vision/certs/
+*.pem
+*.key
+.env
+.env.*
+
+# ---------------- Python ----------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# ---------------- 运行产物 ----------------
+# 现场快照、拒绝库、e2e 记录：都由程序生成，需要时重跑即可
+vision/records/
+vision/runs/
+rebench/runs/
+*.log
+pip.log
+
+# 交接包 / 演示产物：由 working/make_handover.py 重新生成
+output/
+
+# 调试中间图（.py 诊断脚本要留，它们记录了排查过程）
+working/**/*.jpg
+working/**/*.png
+working/**/*.log
+working/**/*.json
+working/_scratch/
+
+# ---------------- 参考资料 ----------------
+# 机器人模型与 SDK 参考件（47 MB）。真要归档，建议单独放 release 或 Git LFS
+galbot_ref/
+
+# ---------------- 本地环境 ----------------
+.workbuddy/
+.DS_Store
+Thumbs.db
+
+# 视觉模块实际在 vision-rescue/vision/ 下，等价规则在这里补齐
+vision-rescue/vision/records/
+vision-rescue/vision/certs/
+vision-rescue/.DS_Store
