@@ -9,7 +9,8 @@ import cv2
 import numpy as np
 
 from .occlusion import MISSING, OCCLUDED, VISIBLE
-from .tools.occlusion_live import BASELINE_FRAMES, OcclusionSession
+from .tools.occlusion_live import (BASELINE_FRAMES, FG_CONFIRM_FRAMES,
+                                   MISSING_PURGE_FRAMES, OcclusionSession)
 
 
 def jpeg(img):
@@ -37,7 +38,8 @@ class OcclusionLiveTest(unittest.TestCase):
         s = OcclusionSession(use_color=use_color)
         for _ in range(BASELINE_FRAMES):
             s.frame(jpeg(self.desk))
-        result = s.frame(jpeg(scene))
+        for _ in range(1 if use_color else FG_CONFIRM_FRAMES):
+            result = s.frame(jpeg(scene))
         return s, result
 
     @staticmethod
@@ -95,6 +97,52 @@ class OcclusionLiveTest(unittest.TestCase):
                 self.assertEqual(removed["decisions"], {},
                                  "空桌不是障碍物，绝不能对已经拿走的目标盲抓")
                 self.assertEqual(removed["obstacles"], 0)
+
+    def test_new_foreground_requires_consecutive_frames(self):
+        s = OcclusionSession(use_color=False)
+        for _ in range(BASELINE_FRAMES):
+            s.frame(jpeg(self.desk))
+        for _ in range(FG_CONFIRM_FRAMES - 1):
+            early = s.frame(jpeg(self.foreground_scene))
+            self.assertEqual(early["objects"], [], "瞬时噪声不能立刻进入世界模型")
+        confirmed = s.frame(jpeg(self.foreground_scene))
+        self.assertEqual(len(confirmed["objects"]), 2)
+
+    def test_auto_exposure_change_does_not_create_objects(self):
+        textured = self.desk.copy()
+        for x, y, value in ((100, 100, 85), (350, 180, 135),
+                            (650, 330, 80), (900, 160, 140)):
+            cv2.rectangle(textured, (x, y), (x + 130, y + 120),
+                          (value, value, value), -1)
+        s = OcclusionSession(use_color=False)
+        for _ in range(BASELINE_FRAMES):
+            s.frame(jpeg(textured))
+        brighter = np.clip(textured.astype(np.float32) * 1.40 + 5.0,
+                           0, 255).astype(np.uint8)
+        for _ in range(FG_CONFIRM_FRAMES + 2):
+            result = s.frame(jpeg(brighter))
+            self.assertEqual(result["objects"], [],
+                             "自动曝光把背景整体变亮，不等于出现新物体")
+            self.assertEqual(result["obstacles"], 0)
+
+    def test_partial_object_touching_frame_edge_is_rejected(self):
+        s = OcclusionSession(use_color=False)
+        for _ in range(BASELINE_FRAMES):
+            s.frame(jpeg(self.desk))
+        partial = self.desk.copy()
+        cv2.rectangle(partial, (0, 0), (120, 120), (25, 25, 25), -1)
+        for _ in range(FG_CONFIRM_FRAMES + 2):
+            result = s.frame(jpeg(partial))
+            self.assertEqual(result["objects"], [])
+
+    def test_persistent_missing_objects_are_purged(self):
+        s, initial = self.session(self.foreground_scene, use_color=False)
+        self.assertEqual(len(initial["objects"]), 2)
+        for _ in range(MISSING_PURGE_FRAMES):
+            removed = s.frame(jpeg(self.desk))
+        self.assertEqual(removed["objects"], [])
+        self.assertEqual(s.world.objects, {})
+        self.assertEqual(removed["obstacles"], 0)
 
     def test_front_near_and_overhead_have_distinct_decisions(self):
         cases = ((680, "blind_pick", "clear"),

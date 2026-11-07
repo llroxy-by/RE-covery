@@ -1,10 +1,11 @@
-"""遮挡记忆演示 · 手机摄像头版（自主识别，无需人工点选）
+"""遮挡记忆演示 · 手机/电脑摄像头版（自主识别，无需人工点选）
 
-    python -m rebench.tools.occlusion_live --port 8302
-    手机打开 https://<电脑IP>:8302 → 高级 → 继续前往 → 允许摄像头
+    python -m rebench.tools.occlusion_live --port 8302 --no-color
+    电脑打开 https://127.0.0.1:8302；手机打开 https://<电脑IP>:8302
+    自签证书先选“高级 → 继续前往”，再允许摄像头。
 
 现场流程（全程不需要点屏幕）：
-  1. 打开页面时桌面尽量空着，它用前 1 秒自动记下"空桌长什么样"
+  1. 打开页面时桌面尽量空着，它用前 12 帧自动记下"空桌长什么样"
   2. 把积木放上去 → 自动识别成一个物体，**框住整块积木**，并记下三维位置
   3. 拿盒子挡在积木前面 → 积木看不见了 → 页面切「遮挡中」，位置不动，给出决策
   4. 把盒子拿开 → 目标重新出现 → 「记忆校验通过」
@@ -39,7 +40,7 @@ from urllib.parse import urlparse
 import cv2
 import numpy as np
 
-from ..occlusion import (Box3D, OCCLUDED, WorldModel,
+from ..occlusion import (Box3D, MISSING, OCCLUDED, WorldModel,
                          check_vertical_approach, pick_strategy)
 
 # 功能分支把视觉源码放在 vision-rescue/vision/，主分支则放在 vision/。
@@ -65,9 +66,12 @@ OBJ_WIDTH = 0.040
 OBJ_HALF_H = 0.020
 
 # ---------------------------------------------------------------- 检测参数
-BASELINE_FRAMES = 12       # 用前 12 帧（约 1 秒）学空桌基线
+BASELINE_FRAMES = 12       # 用前 12 帧学空桌基线
 FG_DIFF = 26               # 与空桌的灰度差超过这个算"有东西"
 FG_MIN_AREA = 2500         # 小于这个面积的斑点当噪声
+FG_CONFIRM_FRAMES = 3      # 新区域连续出现 3 帧才建物体，瞬时噪声不进世界模型
+FG_CANDIDATE_TTL = 2       # 候选中断多少帧后丢弃
+MISSING_PURGE_FRAMES = 6   # 确认不是遮挡、且持续丢失后，清出跟踪表
 TPL_MAX_SIDE = 160         # 模板最长边（整块物体的裁剪）
 MATCH_MIN = 0.50           # 模板匹配低于这个算"看不见了"
 SEARCH_PAD_RATIO = 0.6     # 在上一位置多大范围里找
@@ -128,6 +132,36 @@ def bbox_to_box(bbox, height_m: float = 0.18) -> Box3D | None:
     return Box3D(min(xs), max(xs) + BOX_DEPTH_EST,
                  min(ys) - 0.02, max(ys) + 0.02,
                  TABLE_Z, TABLE_Z + height_m)
+
+
+def _exposure_params(current: np.ndarray, reference: np.ndarray) -> tuple[float, float]:
+    """估计 current ≈ gain × reference + offset，用全图分位数抗局部新物体干扰。
+
+    电脑摄像头的自动曝光/白平衡会让整张图一起变，固定基线若不做这一步，
+    每个亮一点的背景纹理都会被当成“新出现的物体”。物体通常只占小面积，
+    所以全图 10/90 分位数和中位数仍能代表背景。
+    """
+    c = current[::8, ::8].astype(np.float32)
+    r = reference[::8, ::8].astype(np.float32)
+    c10, c90 = np.percentile(c, (10, 90))
+    r10, r90 = np.percentile(r, (10, 90))
+    if c90 - c10 < 4.0 or r90 - r10 < 4.0:
+        gain = 1.0
+    else:
+        gain = float(np.clip((c90 - c10) / (r90 - r10), 0.5, 2.0))
+    offset = float(np.median(c - gain * r))
+    return gain, offset
+
+
+def _match_exposure(reference: np.ndarray, current: np.ndarray) -> np.ndarray:
+    """把参考图曝光对齐到当前图，返回值仍是 uint8。"""
+    gain, offset = _exposure_params(current, reference)
+    return np.clip(reference.astype(np.float32) * gain + offset,
+                   0, 255).astype(np.uint8)
+
+
+def _exposure_residual(current: np.ndarray, reference: np.ndarray) -> np.ndarray:
+    return cv2.absdiff(current, _match_exposure(reference, current))
 
 
 def _iou(a, b) -> float:
@@ -239,6 +273,8 @@ class OcclusionSession:
         self.events: deque = deque(maxlen=8)
         self.frames = 0
         self._next_id = 1
+        self._candidates: list[dict] = []
+        self._missing_frames: dict[str, int] = {}
         # 空桌基线：前 BASELINE_FRAMES 帧的逐像素中值
         self._base_buf: list[np.ndarray] = []
         self.baseline: np.ndarray | None = None
@@ -258,16 +294,20 @@ class OcclusionSession:
             self.clean_gray.clear()
             self.events.clear()
             self._base_buf.clear()
+            self._candidates.clear()
+            self._missing_frames.clear()
             self.baseline = None
             self._next_id = 1
             return {"ok": True, "note": "已清空，重新学习空桌"}
 
     # ------------------------------------------------------------ 检测
-    def _foreground(self, gray: np.ndarray) -> list[tuple]:
-        """与空桌基线差分，返回新出现的整块区域（任意颜色都能找到）。"""
+    def _foreground(self, gray: np.ndarray,
+                    residual: np.ndarray | None = None) -> list[tuple]:
+        """与曝光对齐后的空桌基线差分，返回新出现的整块区域。"""
         if self.baseline is None:
             return []
-        d = cv2.absdiff(gray, self.baseline)
+        d = (_exposure_residual(gray, self.baseline) if residual is None
+             else residual)
         _, m = cv2.threshold(d, FG_DIFF, 255, cv2.THRESH_BINARY)
         m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8))
         # 大核闭运算：把一块积木上的高光/阴影/贴纸碎片连成一个整体。
@@ -283,8 +323,39 @@ class OcclusionSession:
             x, y, bw, bh = cv2.boundingRect(c)
             if not 0.25 <= bw / float(max(bh, 1)) <= 4.0:
                 continue
+            # 贴边的物体已经被画面切掉，不可能满足“框住整个物体”。
+            if x <= 2 or y <= 2 or x + bw >= w - 2 or y + bh >= h - 2:
+                continue
             out.append((x, y, bw, bh))
         return out
+
+    def _stable_foreground(self, gray: np.ndarray,
+                           residual: np.ndarray | None) -> list[tuple]:
+        """连续 FG_CONFIRM_FRAMES 帧位置一致的区域，才允许进入物体表。"""
+        detections = self._foreground(gray, residual)
+        previous = self._candidates
+        used: set[int] = set()
+        current: list[dict] = []
+        for bbox in detections:
+            best_i, best_iou = None, 0.0
+            for i, cand in enumerate(previous):
+                if i in used:
+                    continue
+                iou = _iou(bbox, cand["bbox"])
+                if iou > best_iou:
+                    best_i, best_iou = i, iou
+            if best_i is not None and best_iou >= 0.35:
+                used.add(best_i)
+                hits = previous[best_i]["hits"] + 1
+            else:
+                hits = 1
+            current.append({"bbox": bbox, "hits": hits, "last": self.frames})
+        for i, cand in enumerate(previous):
+            if i not in used and self.frames - cand["last"] <= FG_CANDIDATE_TTL:
+                current.append(cand)
+        self._candidates = current
+        return [c["bbox"] for c in current
+                if c["hits"] >= FG_CONFIRM_FRAMES and c["last"] == self.frames]
 
     def _color_boxes(self, img: np.ndarray) -> list[tuple[str, tuple]]:
         """按调色板找积木（有配置才用）。返回 [(稳定ID, 整块外接框)]。"""
@@ -297,7 +368,8 @@ class OcclusionSession:
         return [(d.object_id, tuple(int(v) for v in d.bbox))
                 for d in dets if not d.is_unknown]
 
-    def _update_objects(self, img: np.ndarray, gray: np.ndarray) -> dict[str, tuple]:
+    def _update_objects(self, img: np.ndarray, gray: np.ndarray,
+                        residual: np.ndarray | None) -> dict[str, tuple]:
         """把这一帧的检测并进物体表，返回 {id: 当前框}（只列看得见的）。"""
         seen: dict[str, tuple] = {}
 
@@ -317,12 +389,16 @@ class OcclusionSession:
             if oid in seen or o.source != "fg":
                 continue
             bbox, _score = o.locate(img)
+            if bbox is not None and residual is not None:
+                # 模板可能在相似背景上“匹配成功”；区域若已恢复空桌就不能算看见。
+                if float(np.mean(_patch(residual, bbox))) <= PATCH_DIFF_EMPTY:
+                    bbox = None
             if bbox is not None:
                 o.bbox = bbox
                 seen[oid] = bbox
 
-        # ③ 新出现的前景区域 → 建新物体（框住整块）
-        for bbox in self._foreground(gray):
+        # ③ 连续多帧存在的新前景区域 → 建新物体（框住整块）
+        for bbox in self._stable_foreground(gray, residual):
             if any(_iou(bbox, b) > 0.25 for b in seen.values()):
                 continue
             # **盖住已有目标的区域是障碍物，不是新物体。**
@@ -352,7 +428,7 @@ class OcclusionSession:
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             self.last_clean = img
 
-            # 学空桌基线：前 1 秒取中值，之后固定不动
+            # 学空桌基线：前 12 帧取中值，之后固定不动
             if self.baseline is None:
                 self._base_buf.append(gray)
                 if len(self._base_buf) >= BASELINE_FRAMES:
@@ -361,10 +437,13 @@ class OcclusionSession:
                     self._base_buf.clear()
                     self._ev("空桌基线已就绪")
 
-            seen = self._update_objects(img, gray)
+            residual = (_exposure_residual(gray, self.baseline)
+                        if self.baseline is not None else None)
+            seen = self._update_objects(img, gray, residual)
 
             # ① 看见的 → 刷新记忆（唯一会改位置的地方）
             for oid, bbox in seen.items():
+                self._missing_frames[oid] = 0
                 pose = bbox_pose_table(bbox)
                 if pose is None:
                     continue
@@ -387,15 +466,21 @@ class OcclusionSession:
                     continue
                 bbox = self.last_bbox[oid]
                 current_patch = _patch(gray, bbox).astype(np.int16)
-                diff = float(np.mean(np.abs(
-                    current_patch - self.last_patches[oid].astype(np.int16))))
+                prev = self.clean_gray.get(oid)
+                if prev is not None:
+                    cur_small = cv2.resize(gray, (640, 360), interpolation=cv2.INTER_AREA)
+                    prev_aligned = _match_exposure(prev, cur_small)
+                    small_bbox = tuple(int(round(v / 2.0)) for v in bbox)
+                    diff = float(np.mean(np.abs(
+                        _patch(cur_small, small_bbox).astype(np.int16)
+                        - _patch(prev_aligned, small_bbox).astype(np.int16))))
+                else:
+                    diff = float(np.mean(np.abs(
+                        current_patch - self.last_patches[oid].astype(np.int16))))
                 # “和目标上次的外观不同”不等于“被挡住”：积木被拿走后，空桌面
                 # 与积木本身的差异同样很大。必须再对照空桌基线，否则会对空位盲抓。
-                if self.baseline is not None:
-                    empty_diff = float(np.mean(np.abs(
-                        current_patch - _patch(self.baseline, bbox).astype(np.int16))))
-                else:
-                    empty_diff = float("inf")
+                empty_diff = (float(np.mean(_patch(residual, bbox)))
+                              if residual is not None else float("inf"))
                 if empty_diff <= PATCH_DIFF_EMPTY:
                     reason = "empty"           # 区域已经恢复成空桌：目标真被拿走
                 elif diff >= PATCH_DIFF_OCCLUDED:
@@ -403,6 +488,10 @@ class OcclusionSession:
                 else:
                     reason = "unchanged"       # 检测漏帧但区域没变化，不能据此盲抓
                 state = self.world.resolve(oid, slot_reason=reason)
+                if state == MISSING:
+                    self._missing_frames[oid] = self._missing_frames.get(oid, 0) + 1
+                else:
+                    self._missing_frames[oid] = 0
                 if state == OCCLUDED:
                     occluded_now[oid] = {"diff": round(diff, 1), "bbox": bbox}
                     occ = self._occluder_bbox(gray, oid, bbox)
@@ -410,6 +499,19 @@ class OcclusionSession:
                         box = bbox_to_box(occ)
                         if box is not None:
                             obstacles.append(box)
+
+            # missing 不是 occluded：没有证据表明原目标还在，持续几帧后清出列表。
+            # 否则一次曝光抖动造成的误检会在页面上挂 5 分钟，并继续参与障碍物计算。
+            for oid, count in list(self._missing_frames.items()):
+                if count < MISSING_PURGE_FRAMES:
+                    continue
+                self.world.forget(oid)
+                self.objs.pop(oid, None)
+                self.last_patches.pop(oid, None)
+                self.last_bbox.pop(oid, None)
+                self.clean_gray.pop(oid, None)
+                self._missing_frames.pop(oid, None)
+                self._ev(f"{oid} 持续丢失，已清除")
 
             self.world.set_obstacles(obstacles, camera_pose=tuple(CAM_POS))
 
@@ -443,7 +545,7 @@ class OcclusionSession:
         if prev is None:
             return None
         cur = cv2.resize(gray, (640, 360), interpolation=cv2.INTER_AREA)
-        d = cv2.absdiff(cur, prev)
+        d = _exposure_residual(cur, prev)
         _, m = cv2.threshold(d, 30, 255, cv2.THRESH_BINARY)
         m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
         m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8))
@@ -581,8 +683,8 @@ button{flex:1;padding:14px 10px;border-radius:11px;border:1px solid #33507a;back
 <div class="msg" id="msg">正在请求摄像头权限…</div>
 <div id="cards"></div>
 <div class="bar"><button id="clr">重新学习空桌</button></div>
-<div class="note">全程不需要点屏幕：开页面时桌面尽量空着，它用前 1 秒记住空桌，
-之后放上去的东西会自动被识别。<br>
+<div class="note">全程不需要点屏幕：开页面时桌面尽量空着，它用前 12 帧记住空桌，
+之后放上去的东西会自动被识别（连续出现 3 帧才确认）。<br>
 几何说明：手机没有深度，位置由像素反投影到桌面平面得到，相机位姿为演示用的
 固定假设值（≈ 机器人腕部俯视桌面），不是标定结果。</div>
 
@@ -647,7 +749,7 @@ function render(j){
     </div>`;
   }).join('') || `<div class="card"><div class="row"><span>${
       j.baseline_ready? '画面里还没有物体：把积木放上去，会自动识别'
-                      : '正在学习空桌，请让桌面空着（约 1 秒）'}</span></div></div>`;
+                      : '正在学习空桌，请让桌面空着（前 12 帧）'}</span></div></div>`;
 
   const occ=j.objects.filter(o=>o.state==='occluded').length;
   if(!j.baseline_ready) setMsg('正在学习空桌，请让桌面空着…');
@@ -727,7 +829,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description="遮挡记忆演示（手机摄像头，自主识别）")
+    p = argparse.ArgumentParser(description="遮挡记忆演示（手机/电脑摄像头，自主识别）")
     p.add_argument("--port", type=int, default=8302)
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--config", default=None,
