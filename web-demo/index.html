@@ -292,8 +292,202 @@ will-change:transform;
 @media(prefers-reduced-motion:reduce){
 .robotstrip>img[src="robot-lime.svg"]{animation:none;transform:none}
 }
+
+.live-camera{grid-column:1;grid-row:4;min-width:0;border:1px solid #b4ff00;border-radius:8px;padding:16px;background:#111713;box-shadow:0 0 14px #b4ff000d}
+.live-camera header{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:#b4ff00}
+.camera-screen{aspect-ratio:4/3;background:#080d0b;display:grid;place-items:center;overflow:hidden;margin:14px 0;border:1px solid #354b2c}
+.camera-screen img{width:100%;height:100%;object-fit:contain;min-height:0}
+.camera-screen p{color:#a0aa9d;font-size:16px;padding:12px}
+.live-camera input{width:100%;padding:10px;margin:8px 0 14px;background:#172018;color:white;border:1px solid #698545;font-size:16px;box-sizing:border-box}
+.live-camera p,.live-camera label,.live-camera summary{font-size:16px;overflow-wrap:anywhere}
+#realS1{width:100%;margin-top:12px}
+.manual-work{grid-row:3 / span 2}
+[hidden]{display:none!important}
+
+/* 旧版机械键帽：斜面、高光、实体厚底 */
+button,.nav a,.switch button{
+--cap-top:var(--key-top,#c2ffff);
+--cap-face:var(--key-face,#30ddd6);
+--cap-side:var(--key-edge,#237e80);
+position:relative;border-radius:11px!important;
+border:1px solid #ffffff65!important;
+background:linear-gradient(155deg,var(--cap-top),var(--cap-face))!important;
+box-shadow:inset 3px 3px 4px #ffffffa0,inset -5px -6px 6px #122a3a40,0 5px 0 var(--cap-side),0 9px 0 #080d13,0 13px 14px #0005!important;
+text-shadow:none;transition:transform .12s,box-shadow .12s,filter .12s;
+}
+button:hover:not(:disabled),.nav a:hover{
+background:linear-gradient(155deg,var(--cap-top),var(--cap-face))!important;
+transform:translateY(-2px);filter:brightness(1.06);
+box-shadow:inset 3px 3px 4px #ffffffb0,inset -5px -6px 6px #122a3a40,0 7px 0 var(--cap-side),0 11px 0 #080d13,0 15px 18px #0005!important;
+}
+button:active:not(:disabled),.nav a:active{
+transform:translateY(6px);
+box-shadow:inset 2px 2px 3px #ffffff80,inset -3px -3px 4px #122a3a40,0 1px 0 var(--cap-side),0 3px 0 #080d13!important;
+}
+.nav a:nth-child(n),.nav a:nth-child(n):hover,.nav a:nth-child(n).active{
+--key-top:#edff9d;--key-face:#c5ff00;--key-edge:#6ab000;
+--cap-top:#edff9d;--cap-face:#c5ff00;--cap-side:#6ab000;
+color:#142300!important;
+}
+.nav a.active{outline:2px solid #e8ff9a;outline-offset:4px}
+.nav i{border:0;border-radius:3px;background:transparent;box-shadow:none;color:inherit}
+.nav{gap:22px}
+.actions,.verdict-actions{gap:18px}
+button:disabled{
+--cap-top:#5a675b;--cap-face:#35473a;--cap-side:#213324;
+background:linear-gradient(155deg,var(--cap-top),var(--cap-face))!important;
+color:#b3bfb2!important;filter:saturate(.2);
+box-shadow:inset 2px 2px 3px #ffffff20,inset -3px -4px 4px #0003,0 4px 0 #1b2a1e,0 7px 0 #0b130e!important;
+}
+@media(prefers-reduced-motion:reduce){button,.nav a{transition:none}}
+
+/* 荧光绿渐变与透明玻璃面板 */
+:root{--bg:#08110c;--panel:#13241c80;--line:#c9ff9638;--line-soft:#b5ef8a20;--text:#f2f8ec;--muted:#adbea6;--faint:#869a7f;--mint:#b4ff36}
+body{
+background:
+radial-gradient(ellipse at 8% 6%,#a8ff4266 0%,transparent 32%),
+radial-gradient(ellipse at 88% 28%,#6fe92445 0%,transparent 35%),
+radial-gradient(ellipse at 55% 88%,#d4ff573b 0%,transparent 38%),
+linear-gradient(125deg,#07130d 8%,#183a1e 43%,#0b1b13 70%,#2c4717);
+background-attachment:fixed;color:var(--text);
+}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:linear-gradient(118deg,transparent 22%,#c8ff7a12 30%,transparent 39%,transparent 63%,#b9ff5520 69%,transparent 77%)}
+.side{background:#07170e70;border-right:1px solid #c7ff8d30;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}
+.panel,.verify,.stats,.robotstrip,.live-camera{
+background:linear-gradient(135deg,#e5ffd716,#10271965);
+border:1px solid #d6ffad3b;
+box-shadow:inset 0 1px 0 #efffe92e,inset 0 -1px 0 #b5ff6d0a,0 10px 30px #001b0b25;
+backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+}
+.stats,.robotstrip{border-radius:12px;padding:14px}
+.panelhead,.scene-toolbar,.verdict-foot,.scene-note{background:#d7ffb307;border-color:#c9ff9525}
+.scene{background:#07150d70}.scenes{background:#a7d77c33}
+.switch{background:#d8ffba0b;border-color:#c9ff9538}
+.topbar{border-color:#c9ff9538}.topbar .tag{background:#b8ff4920;color:#caff87}
+.hero p,.muted,.verdict-meta p,.scenetitle span,.scene-note,.dialog p,.dialog ol{color:var(--muted)}
+th{background:#9cdb6b0d}.object-name{color:#edf8e8}tbody tr:hover{background:#c2ff7a10}
+.dialog{background:linear-gradient(135deg,#253b29ed,#0c2118ed);border-color:#dcffb654;backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);box-shadow:0 24px 70px #0007,inset 0 1px 0 #fff3}
+.dialog::backdrop{background:#02100880;backdrop-filter:blur(8px)}
+.model-preview{background:radial-gradient(ellipse,#bcff6a1a,#07160d55);border-color:#c8ff8840}
+.live-camera{border-color:#bdff6b99}.camera-screen{background:#04110970;border-color:#b4ff3640}
+.live-camera input,select{background:#102719a0;color:#efffe6;border-color:#c3ff7755}
+.log time,footer{color:#93ad87}.bar{background:#c1ff7620}.stepnum{border-color:#c5ff7545}
+/* 透明按键：保留原按钮色系，以染色玻璃呈现 */
+button,.nav a,.switch button,
+button:hover:not(:disabled),.nav a:hover,.switch button.on{
+background:linear-gradient(145deg,#ecffde25,#9cd96810 50%,#041d1166)!important;
+border:1px solid #d8ffb56b!important;
+border-radius:11px!important;
+box-shadow:inset 0 1px 1px #f4ffe76b,inset 0 -3px 4px #00160a66,0 4px 0 #07160e9c,0 8px 18px #00190940!important;
+backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+color:#edffe1!important;text-shadow:0 1px 2px #001b0a!important;
+}
+button:hover:not(:disabled),.nav a:hover{background:linear-gradient(145deg,#e8ffd83d,#9bff5020 65%,#10351a77)!important;border-color:#e1ffbca6!important}
+button.primary,#generateBtn,#runBtn,.nav a:nth-child(n),.nav a:nth-child(n).active,.switch button.on{
+background:linear-gradient(145deg,#d7ff9947,#a9ff2829 55%,#173e1670)!important;
+color:#d8ff9b!important;border-color:#c9ff7a8c!important;
+}
+#decisionBtn,#resetBtn{color:#ffe3a5!important;border-color:#ffdf9a77!important}
+#helpBtn,#exportBtn{color:#e4d3ff!important}
+#stopBtn{color:#ffb9bf!important}
+button:active:not(:disabled),.nav a:active{box-shadow:inset 0 2px 6px #00180b66,0 1px 0 #07160e99!important}
+button:disabled{background:#b7d3a60b!important;color:#84977b!important;border-color:#bddaa22c!important;box-shadow:inset 0 1px 0 #ffffff15,0 3px 0 #04100855!important;filter:none}
+.nav a.active{outline:1px solid #d1ff8e;outline-offset:4px}
+.nav i{background:#c5ff7a0d;border:1px solid #c8ff9638;border-radius:4px}
+.robot-stage{background:transparent}
+
+/* 黑色主背景，少量局部绿光；磨砂面板与实体键帽 */
+body{
+background:
+radial-gradient(ellipse 38% 28% at 96% 7%,#7fe51c25 0%,transparent 75%),
+radial-gradient(ellipse 32% 24% at 5% 78%,#a4ff2520 0%,transparent 76%),
+radial-gradient(ellipse 23% 20% at 72% 96%,#56b91a16 0%,transparent 75%),
+#090c0b;
+background-attachment:fixed;
+}
+body:before{background:linear-gradient(125deg,transparent 72%,#b7ff3905 78%,transparent 84%)}
+.side{background:#101412b8}
+.panel,.verify,.stats,.robotstrip,.live-camera{
+background:linear-gradient(135deg,#ffffff09,#1016139c);
+border-color:#d8f1cb27;
+box-shadow:inset 0 1px 0 #ffffff15,0 10px 30px #0003;
+}
+.panelhead,.scene-toolbar,.verdict-foot,.scene-note{background:#ffffff03}
+button,.nav a,.switch button,
+button.primary,#generateBtn,#runBtn,
+.nav a:nth-child(n),.nav a:nth-child(n).active,.switch button.on,
+button:hover:not(:disabled),.nav a:hover{
+background:linear-gradient(155deg,var(--cap-top),var(--cap-face))!important;
+border:1px solid #ffffff65!important;
+box-shadow:inset 3px 3px 4px #ffffffa0,inset -5px -6px 6px #122a3a40,0 5px 0 var(--cap-side),0 9px 0 #030605,0 13px 14px #0006!important;
+backdrop-filter:none;-webkit-backdrop-filter:none;
+color:#142720!important;text-shadow:none!important;
+}
+button:hover:not(:disabled),.nav a:hover{
+transform:translateY(-2px);
+box-shadow:inset 3px 3px 4px #ffffffb0,inset -5px -6px 6px #122a3a40,0 7px 0 var(--cap-side),0 11px 0 #030605,0 15px 18px #0006!important;
+}
+button:active:not(:disabled),.nav a:active{
+transform:translateY(6px);
+box-shadow:inset 2px 2px 3px #ffffff80,inset -3px -3px 4px #122a3a40,0 1px 0 var(--cap-side),0 3px 0 #030605!important;
+}
+#helpBtn,#verifyBtn,#exportBtn,#helpBtn:hover,#verifyBtn:hover,#exportBtn:hover{color:#fff!important}
+#decisionBtn,#resetBtn{color:#492800!important}
+#stopBtn{color:#530024!important}
+button:disabled{
+--cap-top:#5a675b;--cap-face:#35473a;--cap-side:#213324;
+background:linear-gradient(155deg,var(--cap-top),var(--cap-face))!important;
+color:#a3b09e!important;border-color:#53634b!important;
+box-shadow:inset 2px 2px 3px #ffffff20,inset -3px -4px 4px #0003,0 4px 0 #1b2a1e,0 7px 0 #080e09!important;
+}
+.nav i{border:0;background:transparent;box-shadow:none}
+
+/* 局部荧光绿光带 + 磨砂玻璃 + 透明实体键帽 */
+body{
+background:
+radial-gradient(ellipse 34% 48% at 97% 12%,#a5ff365c 0%,#79d91b26 34%,transparent 75%),
+radial-gradient(ellipse 25% 48% at 1% 79%,#91f9294d 0%,#61be171a 40%,transparent 76%),
+radial-gradient(ellipse 27% 28% at 66% 100%,#b7ff4938 0%,transparent 75%),
+#070c09;
+background-attachment:fixed;
+}
+body:before{background:linear-gradient(117deg,transparent 58%,#8aff2405 65%,#c3ff6320 69%,#9bf92c08 73%,transparent 79%)}
+.panel,.verify,.stats,.robotstrip,.live-camera{
+background:linear-gradient(135deg,#efffe612,#11201850 55%,#d7ffb60a);
+border:1px solid #d4ffaf3d;
+box-shadow:inset 0 1px 0 #f1ffe936,inset 1px 0 0 #e9ffd310,0 14px 36px #0004;
+backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%);
+}
+.side{background:#0c18115c;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}
+.scene{background:#08140c65}.panelhead,.scene-toolbar,.verdict-foot,.scene-note{background:#efffe804}
+button,.nav a,.switch button,
+button.primary,#generateBtn,#runBtn,.nav a:nth-child(n),.nav a:nth-child(n).active,.switch button.on,
+button:hover:not(:disabled),.nav a:hover{
+background:linear-gradient(145deg,#f2ffe63d 0%,#d2ffb51c 12%,#acd7830d 55%,#001a1270 100%)!important;
+border:1px solid #e0ffbe88!important;
+border-radius:11px!important;
+color:#e4ffce!important;text-shadow:0 1px 2px #001509!important;
+box-shadow:inset 2px 2px 3px #f4ffe557,inset -3px -5px 5px #00160c66,0 5px 0 #253d277d,0 8px 0 #041008a6,0 12px 18px #0005!important;
+backdrop-filter:blur(14px) saturate(150%);-webkit-backdrop-filter:blur(14px) saturate(150%);
+}
+button.primary,#generateBtn,#runBtn,.nav a:nth-child(n),.nav a:nth-child(n).active,.switch button.on{
+background:linear-gradient(145deg,#e6ffab57,#b7ff352e 45%,#163c1877)!important;
+border-color:#d0ff879c!important;color:#dcffa7!important;
+}
+button:hover:not(:disabled),.nav a:hover{
+transform:translateY(-2px);filter:brightness(1.1);
+box-shadow:inset 2px 2px 3px #f4ffe570,inset -3px -5px 5px #00160c66,0 7px 0 #3453318c,0 10px 0 #041008a6,0 15px 20px #0005!important;
+}
+button:active:not(:disabled),.nav a:active{
+transform:translateY(5px);
+box-shadow:inset 1px 2px 5px #001b0a66,inset 0 1px 0 #f0ffe63b,0 1px 0 #3453318c,0 3px 0 #041008a6!important;
+}
+#helpBtn,#verifyBtn,#exportBtn,#helpBtn:hover,#verifyBtn:hover,#exportBtn:hover{color:#f3ffe9!important}
+#decisionBtn,#resetBtn{color:#ffe8af!important;border-color:#ffe4a66b!important}
+#stopBtn{color:#ffc1cb!important}
+button:disabled{background:linear-gradient(145deg,#d5e8c815,#11201655)!important;border-color:#bbd4a62b!important;color:#8a9c80!important;box-shadow:inset 0 1px 0 #ffffff20,0 3px 0 #0a170f88!important;filter:none}
 </style>
-</head>
+<link rel="icon" type="image/png" href="app-icon.png"><link rel="apple-touch-icon" href="app-icon.png"></head>
 <body>
 <div class="shell">
 <aside class="side"><div><div class="brand"><span class="brandmark">↻</span>RE-<b>covery</b></div><small>实体世界复位智能体</small></div><nav class="nav" aria-label="主导航"><a href="#overview" class="active"><i>◫</i><span class="label">总览与判定</span></a><a href="#workspace"><i>⌖</i><span class="label">场景对照</span></a><a href="#recovery"><i>↻</i><span class="label">复位与验收</span></a><a href="#history"><i>≡</i><span class="label">实验记录</span></a></nav><div class="sidefoot"><div class="mint"><span class="dot"></span>本地模拟环境</div><p class="muted" style="margin:5px 0 20px">未连接实体机器人</p><span class="avatar mono">RE</span> Junction Team <div class="eyebrow" style="margin-top:14px">JUNCTION CHINA / 2026</div></div></aside>
@@ -302,7 +496,7 @@ will-change:transform;
 <section class="hero"><div><h1>让下一次实验，回到起点。</h1><p class="muted">GALBOT G1 · 实体场景复位与验证 · 桌面取放 第 3 轮</p></div><div class="actions"><button id="generateBtn" class="primary">⌁ 生成复位计划</button><button id="runBtn" class="primary" disabled>▶ 开始模拟复位</button><button id="resetBtn" class="quiet">↺ 重置</button></div></section>
 <section class="verify" id="verification"><div class="verdictband"><div class="verdict-main"><div class="eyebrow">下一轮实验能否启动 · 判定</div><div class="verdict-row"><div class="verdict amber" id="verdict" role="status" aria-live="polite">BLOCKED</div><div class="verdict-meta"><span class="verdict-word amber" id="verdictWord">暂不可启动</span><p id="verdictText">场景尚未满足下一轮实验条件。</p></div></div></div><div class="verdict-actions"><button id="decisionBtn">查看异常与处理 ↗</button><button id="verifyBtn" class="quiet tiny">重新验收</button></div></div><div class="verdict-foot"><div class="checks" id="checks"></div><div class="decision" id="decisionPanel"><strong>◇ 需要人工决策</strong><span id="decisionText">3 项异常需确认，不能直接判定就绪。</span></div></div></section>
 <section class="panel" id="workspace" style="margin-top:16px"><div class="panelhead"><h2>场景对照<span>同尺度 · S0 基准 ↔ 当前观测</span></h2><span class="pill mint"><span class="dot"></span>模拟快照</span></div><div class="scene-toolbar"><div class="switch" aria-label="标记显示"><button class="on" id="showMarks" aria-pressed="true">差异标记</button><button id="hideMarks" aria-pressed="false">纯净视图</button></div><span class="muted">俯视重建 · 示意图</span><select id="scenario" aria-label="演示场景"><option value="anomaly">异常场景 · 完整流程</option><option value="ready">已就绪 · 验收示例</option></select></div><div class="scenes"><div class="scene"><div class="scenetitle"><strong>S0 基准</strong><span>锁定 · 不可改</span></div><div id="s0"></div><div class="scene-footer"><span>REF_024 · 基准快照</span><span>6 件物品</span></div></div><div class="scene"><div class="scenetitle"><strong id="s1head">S1 当前观测</strong><span id="s1title">发现差异</span></div><div id="s1"></div><div class="scene-footer"><span id="frameLabel">FRAME_1082 · 模拟感知</span><span>CAM_01 ↗</span></div></div></div><div class="legend"><span class="amber">错位</span><span class="red">缺失</span><span style="color:var(--blue)">遮挡</span><span style="color:var(--violet)">新增</span></div><div class="scene-note"><span>坐标单位 mm · 容差 ±10 mm / ±5°</span><span>遮挡 ≠ 缺失，须二次确认</span></div></section>
-<section class="panel" id="recovery" style="margin-top:16px"><div class="panelhead"><h2>复位计划<span>5 步 · 含人工确认</span></h2><span class="muted mono" id="planCount">— / 05</span></div><div class="planbody"><div class="kv" style="margin:0"><span id="planLabel" class="muted">尚未生成</span><span class="mono mint" id="progressText">0%</span></div><div class="bar"><div id="progressBar" style="width:0%"></div></div><ol class="steps" id="steps"></ol><aside class="manual-work"><h3>物品决策 · 模拟</h3><p>先处理遮挡，再处理缺失，最后处理多余物品；可转移至桌旁货架。</p><div class="robot-stage" id="robotStage"></div><p id="robotActionText">模拟操作示意 · 等待扫描</p><div id="placementPreview"></div><p id="placementStatus">等待模拟执行中的人工决策。</p><button id="placementOpen">处理新增工具 ↗</button></aside></div></section>
+<section class="panel" id="recovery" style="margin-top:16px"><div class="panelhead"><h2>复位计划<span>5 步 · 含人工确认</span></h2><span class="muted mono" id="planCount">— / 05</span></div><div class="planbody"><div class="kv" style="margin:0"><span id="planLabel" class="muted">尚未生成</span><span class="mono mint" id="progressText">0%</span></div><div class="bar"><div id="progressBar" style="width:0%"></div></div><ol class="steps" id="steps"></ol><section class="live-camera" aria-label="机器人桌面实时画面"><header><strong>桌面实时画面</strong><span id="liveStatus">未连接</span></header><div class="camera-screen"><img id="liveFrame" hidden alt="机器人摄像头实时画面"><p id="liveEmpty">等待机器人相机连接</p></div><label for="cameraAddress">相机 WebSocket 地址</label><input id="cameraAddress" value="ws://127.0.0.1:8781" placeholder="ws://相机服务地址:端口"><div class="actions"><button id="cameraConnect">连接画面</button><button id="cameraStop">断开</button><button id="captureS1" disabled>采集为 S1</button></div><p id="cameraMeta">真实画面通道 · 不触发机器人动作</p><details id="s1Evidence"><summary>S1 真实快照证据</summary><img id="realS1" hidden alt="S1 采集快照"><p id="s1Meta">尚未采集。识别结果与真机执行暂未接入。</p></details></section><aside class="manual-work"><h3>物品决策 · 模拟</h3><p>先处理遮挡，再处理缺失，最后处理多余物品；可转移至桌旁货架。</p><div class="robot-stage" id="robotStage"></div><p id="robotActionText">模拟操作示意 · 等待扫描</p><div id="placementPreview"></div><p id="placementStatus">等待模拟执行中的人工决策。</p><button id="placementOpen">处理新增工具 ↗</button></aside></div></section>
 <section class="panel" id="differences" style="margin-top:16px"><div class="panelhead"><h2>物品差异<span>对象差异</span></h2><span class="muted">点击物品查看详情 ↗</span></div><div class="tablewrap"><table><thead><tr><th>物品 / ID</th><th>状态</th><th>S0 → S1 位置</th><th>置信度</th><th>处理方式</th></tr></thead><tbody id="diffRows"></tbody></table></div></section>
 <div class="secondary" style="margin-top:16px"><section class="stats" aria-label="模拟统计"><div class="stat"><label>当前实验</label><b class="mono">EXP-024</b><span>桌面取放 · 第 3 轮</span></div><div class="stat"><label>场景匹配度</label><b class="mono mint" id="matchValue">50.0<small>%</small></b><span id="matchSub">3 / 6 个目标位置已匹配</span></div><div class="stat"><label>待处理差异</label><b class="mono amber" id="diffValue">04<small>项</small></b><span id="diffSub">1 错位 · 1 缺失 · 1 遮挡 · 1 新增</span></div><div class="stat"><label>本轮复位耗时</label><b class="mono" id="elapsed">00:00<small>SIM</small></b><span id="phaseText">等待生成计划 / Standby</span></div></section><section class="robotstrip" aria-label="机器人状态"><img src="robot-lime.svg" alt="GALBOT G1 亮绿色线稿：双夹爪与轮式底座" style="width:110px;height:165px;object-fit:contain;float:right;margin:0 8px 8px 20px"><div class="row"><span class="pill mint" id="robotTag">模拟在线</span><span class="mono">GALBOT G1</span><span id="robotMode">STANDBY · 待命</span></div><div class="row"><span class="muted">机械臂 / 夹爪：</span><span id="armState">就绪 / 空闲</span><span class="muted">· 模拟电量 86%</span><span class="muted">· 任务通道 SIMULATION ONLY</span></div><div class="row"><button id="stopBtn" class="quiet tiny" style="color:var(--red)" disabled>Ⅱ 暂停模拟执行</button></div></section></div>
 <section class="panel" id="logPanel" style="margin-top:16px"><div class="panelhead"><h2>任务日志<span>事件流</span></h2><button id="exportBtn" class="quiet tiny">↓ 导出记录</button></div><div class="logs" id="logs" role="log" aria-label="模拟任务日志"></div></section>
@@ -491,4 +685,47 @@ $('placementGrid').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.m
 const exportBase=$('exportBtn').onclick;
 $('exportBtn').onclick=()=>{log('INFO','分阶段决策：'+JSON.stringify(flowData()));exportBase()};
 render();
+
+let cameraSocket=null,cameraEpoch=0,lastCameraFrame=0,frameBlob=null,frameURL=null,cameraBusy=false,decodedFrame=null,watchCamera=null;
+function stopCamera(){
+ cameraEpoch++;if(cameraSocket){cameraSocket.close();cameraSocket=null}
+ clearInterval(watchCamera);frameBlob=null;decodedFrame=null;
+ $('captureS1').disabled=true;$('liveFrame').hidden=true;$('liveEmpty').hidden=false;
+ $('liveStatus').textContent='未连接';$('cameraConnect').disabled=false;cameraBusy=false;
+ if(frameURL){URL.revokeObjectURL(frameURL);frameURL=null}
+}
+$('cameraConnect').onclick=()=>{
+ stopCamera();let url;
+ try{url=new URL($('cameraAddress').value);if(!['ws:','wss:'].includes(url.protocol))throw Error()}catch{$('liveStatus').textContent='请输入有效的 ws:// 或 wss:// 地址';return}
+ const epoch=cameraEpoch;
+ $('liveStatus').textContent='连接中';$('cameraConnect').disabled=true;
+ cameraSocket=new WebSocket(url);cameraSocket.binaryType='blob';
+ cameraSocket.onopen=()=>{if(epoch===cameraEpoch)$('liveStatus').textContent='已连接 · 等待画面'};
+ cameraSocket.onmessage=e=>{
+ if(epoch!==cameraEpoch||!(e.data instanceof Blob)||cameraBusy)return;
+ cameraBusy=true;const blob=e.data,url=URL.createObjectURL(blob),im=new Image();
+ im.onload=()=>{
+ if(epoch!==cameraEpoch){URL.revokeObjectURL(url);return}
+ if(frameURL)URL.revokeObjectURL(frameURL);
+ frameURL=url;decodedFrame=im;frameBlob=blob;lastCameraFrame=Date.now();cameraBusy=false;
+ $('liveFrame').src=url;$('liveFrame').hidden=false;$('liveEmpty').hidden=true;
+ $('captureS1').disabled=false;$('liveStatus').textContent='LIVE · 实时画面';
+ $('cameraMeta').textContent='本机接收 '+new Date(lastCameraFrame).toLocaleTimeString()+' · '+im.naturalWidth+' × '+im.naturalHeight+' · 尚未识别';
+ };
+ im.onerror=()=>{URL.revokeObjectURL(url);cameraBusy=false};im.src=url;
+ };
+ cameraSocket.onclose=()=>{if(epoch!==cameraEpoch)return;stopCamera();$('liveStatus').textContent='连接已断开，请重新连接'};
+ cameraSocket.onerror=()=>{if(epoch===cameraEpoch)$('liveStatus').textContent='连接失败，请检查地址和相机服务'};
+ watchCamera=setInterval(()=>{if(lastCameraFrame&&Date.now()-lastCameraFrame>4000){$('liveFrame').hidden=true;$('liveEmpty').hidden=false;$('liveEmpty').textContent='超过 4 秒无新帧，旧画面已隐藏';$('liveStatus').textContent='画面过期';$('captureS1').disabled=true}},1000);
+};
+$('cameraStop').onclick=stopCamera;
+$('captureS1').onclick=()=>{
+ if(!decodedFrame||Date.now()-lastCameraFrame>4000)return;
+ const canvas=document.createElement('canvas');canvas.width=decodedFrame.naturalWidth;canvas.height=decodedFrame.naturalHeight;
+ canvas.getContext('2d').drawImage(decodedFrame,0,0);
+ $('realS1').src=canvas.toDataURL('image/jpeg',.9);$('realS1').hidden=false;$('s1Evidence').open=true;
+ $('s1Meta').textContent='S1 真实画面 · 采集于 '+new Date().toLocaleString()+'。检测与 S0 比对待接入，不改变上方模拟验收。';
+ notify('已冻结真实 S1 快照，待视觉识别');
+};
+window.addEventListener('beforeunload',stopCamera);
 </script></body></html>
