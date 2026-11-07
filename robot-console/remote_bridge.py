@@ -11,8 +11,16 @@ from galbot_sdk.g1 import GalbotRobot,ControlStatus
 robot=GalbotRobot(); lock=threading.RLock(); last=time.monotonic(); moving=False; baseline={}; last_stamps={}
 position_groups=('head','left_arm','right_arm','leg')
 active_position_joints=set()
-base_v=0.;base_w=0.; base_deadline=0.; base_seq=0; base_error=None
+base_v=0.;base_w=0.; base_deadline=0.; base_seq=0; base_error=None; base_error_at=0.; base_ctrl='未知'
 def emit(obj): print('KITT_JSON '+json.dumps(obj),flush=True)
+def sname(status):
+    try:return ControlStatus(status).name
+    except Exception:return str(status)
+def active_base_controller():
+    fn=getattr(robot,'get_active_controller',None)
+    if fn is None:return '未知'
+    try:return str(fn('chassis'))
+    except Exception as e:return '未知('+str(e)+')'
 def states():
     result=[]
     for s in robot.get_joint_states([],[]):
@@ -26,19 +34,24 @@ def states():
         result.append(dict(name=s.joint_name,position=p,velocity=float(s.velocity),fresh=fresh,baseline=baseline[s.joint_name],limits=limits.get(s.joint_name),controllable=s.joint_name in active_position_joints and s.joint_name in limits,group=s.joint_name.rsplit('_joint',1)[0]))
     return result
 def watchdog():
-    global moving,base_v,base_w,base_error
+    global moving,base_v,base_w,base_error,base_error_at,base_ctrl
     while True:
         time.sleep(.1)
         with lock:
             if base_w or base_v:
                 try:
-                    if time.monotonic()>base_deadline:
-                        status=robot.stop_base();base_v=0.;base_w=0.
-                    else:status=robot.set_base_velocity([base_v,0.,0.],[0.,0.,base_w],0.)
-                    if status!=ControlStatus.SUCCESS:raise RuntimeError(str(status))
+                    expired=time.monotonic()>base_deadline
+                    status=robot.stop_base() if expired else robot.set_base_velocity([base_v,0.,0.],[0.,0.,base_w],0.)
+                    if status!=ControlStatus.SUCCESS:
+                        base_ctrl=active_base_controller()
+                        base_error=('停止' if expired else '速度')+'指令被底盘控制器拒绝：'+sname(status)+' · 当前控制器 '+base_ctrl
+                        base_error_at=time.time();base_v=0.;base_w=0.
+                        try:robot.stop_base()
+                        except Exception:pass
                 except Exception as e:
-                    base_error=str(e);base_v=0.;base_w=0.
-                    robot.stop_base()
+                    base_error='底盘指令异常：'+str(e);base_error_at=time.time();base_v=0.;base_w=0.
+                    try:robot.stop_base()
+                    except Exception:pass
         if moving and time.monotonic()-last>1.5:
             with lock:
                 robot.stop_trajectory_execution();moving=False
@@ -61,7 +74,7 @@ try:
                     except Exception as e:right_diagnostic={'error':str(e)}
                     try:alive_plan=liveness_plan(posture_model,js);alive_error=None
                     except Exception as e:alive_plan=None;alive_error=str(e)
-                    result={'alive_plan':alive_plan,'alive_error':alive_error,'joints':js,'posture':posture,'gripper':read_gripper(robot) if 'read_gripper' in globals() else None,'right_gripper_diagnostic':right_diagnostic,'right_gripper':read_gripper(robot,'right') if 'read_gripper' in globals() else None,'base':robot.get_base_velocity(),'base_error':base_error}
+                    result={'alive_plan':alive_plan,'alive_error':alive_error,'joints':js,'posture':posture,'gripper':read_gripper(robot) if 'read_gripper' in globals() else None,'right_gripper_diagnostic':right_diagnostic,'right_gripper':read_gripper(robot,'right') if 'read_gripper' in globals() else None,'base':robot.get_base_velocity(),'base_error':base_error,'base_error_at':base_error_at,'base_controller':base_ctrl}
                 elif action=='gripper':
                     if base_w or base_v:raise ValueError('请先停止底盘')
                     result=send_gripper(robot,req,ControlStatus.SUCCESS)
@@ -73,18 +86,22 @@ try:
                     if not math.isfinite(v) or abs(v)>.2:raise ValueError('底盘前后速度须在 ±0.2 m/s 内')
                     if not math.isfinite(w) or abs(w)>.3:raise ValueError('底盘转速须在 ±0.3 rad/s 内')
                     if w or v:
-                        if base_error:raise RuntimeError(base_error)
                         if not robot.get_base_velocity():raise ValueError('底盘状态不可用')
+                        base_error=None;base_error_at=0.
                         base_v=v;base_w=w;base_deadline=time.monotonic()+.6
                     else:
                         base_v=0.;base_w=0.;status=robot.stop_base()
-                        if status!=ControlStatus.SUCCESS:raise RuntimeError(str(status))
+                        if status!=ControlStatus.SUCCESS:
+                            base_ctrl=active_base_controller()
+                            base_error='停止指令被底盘控制器拒绝：'+sname(status)+' · 当前控制器 '+base_ctrl
+                            base_error_at=time.time()
+                            raise RuntimeError(base_error)
                     result={'accepted':True,'w':w,'v':v}
                 elif action=='stop':
                     base_v=0.;base_w=0.;base_status=robot.stop_base()
                     status=robot.stop_trajectory_execution();moving=False
-                    if base_status!=ControlStatus.SUCCESS:raise RuntimeError(str(base_status))
-                    if status!=ControlStatus.SUCCESS:raise RuntimeError(str(status))
+                    if base_status!=ControlStatus.SUCCESS:raise RuntimeError('停止指令被底盘控制器拒绝：'+sname(base_status)+' · 当前控制器 '+active_base_controller())
+                    if status!=ControlStatus.SUCCESS:raise RuntimeError('轨迹停止失败：'+sname(status))
                     result={'stopped':True}
                 elif action=='move':
                     if base_w or base_v:raise ValueError('请先停止底盘旋转')
