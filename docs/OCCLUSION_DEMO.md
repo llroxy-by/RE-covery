@@ -9,19 +9,28 @@
 
 ## 1. 怎么跑
 
-电脑摄像头（推荐先用纯前景模式，避免手机调色板未校准造成误检）：
+电脑摄像头直连（推荐，不依赖浏览器摄像头权限，也没有证书告警）：
 
 ```bash
-python -m rebench.tools.occlusion_live --port 8302 --no-color
+python -m rebench.tools.occlusion_live --port 8302 --no-color \
+  --local-camera 0 --http --host 127.0.0.1
 ```
 
 电脑浏览器打开：
 
 ```text
-https://127.0.0.1:8302  →「高级」→「继续前往」→ 允许摄像头
+http://127.0.0.1:8302
 ```
 
-手机则与电脑连接同一局域网，打开 `https://<电脑IP>:8302`。需要启用已校准调色板时去掉 `--no-color` 即可。程序会自动识别主分支的 `vision/` 与功能分支的 `vision-rescue/vision/` 两种源码布局，默认配置路径也会随之一同切换。
+服务端通过 OpenCV 直接读取摄像头，网页只轮询 `/state` 并显示标注结果。若 `camera=0` 不是目标摄像头，可换 `--local-camera 1`。页面提示打不开摄像头时，先检查摄像头是否被会议软件占用、Windows 隐私设置是否允许桌面应用访问。
+
+手机仍使用浏览器摄像头模式，与电脑连接同一局域网后：
+
+```bash
+python -m rebench.tools.occlusion_live --port 8302 --no-color
+```
+
+打开 `https://<电脑IP>:8302`。需要启用已校准调色板时去掉 `--no-color` 即可。程序会自动识别主分支的 `vision/` 与功能分支的 `vision-rescue/vision/` 两种源码布局，默认配置路径也会随之一同切换。
 
 ## 2. 无人工点选的四步演示
 
@@ -113,7 +122,8 @@ https://127.0.0.1:8302  →「高级」→「继续前往」→ 允许摄像头
 - 前方远、前方近、正上方三种盒子分别得到 `clear`、`tight_clearance`、`corridor_blocked`；
 - 颜色与纯前景两种模式下，直接拿走目标都判 `missing`，决策表为空、障碍物为 0；
 - 新前景不足 3 帧不会建物体，背景整体曝光变化不会生成物体或障碍物；
-- 贴画面边缘的不完整物体被拒绝，持续 `missing` 的对象会被自动清除。
+- 贴画面边缘的不完整物体被拒绝，持续 `missing` 的对象会被自动清除；
+- 本机直连页面不调用浏览器 `getUserMedia`，只从 `/state` 取服务端识别结果。
 
 本次完整回归结果：
 
@@ -122,7 +132,7 @@ python -m unittest vision.tests.test_vision
 Ran 79 tests — OK
 
 python -m unittest rebench.tests_perception rebench.tests_occlusion rebench.tests_occlusion_live
-Ran 56 tests — OK
+Ran 57 tests — OK
 ```
 
 修复后的 8302 服务另做了 HTTPS 端到端验证：`GET /` 返回 200；连续提交空桌、积木、遮挡、恢复四种图像后，接口依次返回两个整块目标框、仅红色目标 `occluded` 且 `blind_pick/clear`、两目标恢复 `visible`，并产生「记忆校验：位置一致」事件。
@@ -155,8 +165,13 @@ Ran 56 tests — OK
 ## 11. 命令速查
 
 ```bash
-python -m rebench.tools.occlusion_live --port 8302
+# 电脑摄像头直连
+python -m rebench.tools.occlusion_live --port 8302 --no-color \
+  --local-camera 0 --http --host 127.0.0.1
+
+# 手机浏览器摄像头
 python -m rebench.tools.occlusion_live --port 8302 --no-color
+
 python -m rebench.tools.occlusion_live --fresh-s 60
 python -m unittest rebench.tests_occlusion_live -v
 python -m rebench --mock --rounds 1 --occlude block_red

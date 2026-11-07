@@ -1,8 +1,13 @@
 """遮挡记忆演示 · 手机/电脑摄像头版（自主识别，无需人工点选）
 
+    # 电脑摄像头直连（推荐）
+    python -m rebench.tools.occlusion_live --port 8302 --no-color \
+      --local-camera 0 --http --host 127.0.0.1
+    打开 http://127.0.0.1:8302
+
+    # 手机浏览器摄像头
     python -m rebench.tools.occlusion_live --port 8302 --no-color
-    电脑打开 https://127.0.0.1:8302；手机打开 https://<电脑IP>:8302
-    自签证书先选“高级 → 继续前往”，再允许摄像头。
+    手机打开 https://<电脑IP>:8302，允许自签证书与摄像头。
 
 现场流程（全程不需要点屏幕）：
   1. 打开页面时桌面尽量空着，它用前 12 帧自动记下"空桌长什么样"
@@ -78,6 +83,7 @@ SEARCH_PAD_RATIO = 0.6     # 在上一位置多大范围里找
 PATCH_DIFF_OCCLUDED = 12.0 # 区域灰度变化超过这个 → 被别的东西占了
 PATCH_DIFF_EMPTY = 6.0     # 低于这个 → 变回空桌面，东西真被拿走了
 BOX_DEPTH_EST = 0.05       # 障碍物进深按薄板估（单目看不出厚度）
+LOCAL_CAMERA_FPS = 8       # 本机直连时送进识别链路的帧率
 
 
 # ---------------------------------------------------------------- 几何
@@ -244,6 +250,52 @@ class Obj:
         return (sx0 + loc[0], sy0 + loc[1], tw, th), float(best)
 
 
+class LocalCamera(threading.Thread):
+    """在服务端直接读电脑摄像头，页面不再申请摄像头权限。"""
+
+    def __init__(self, session: "OcclusionSession", index: int = 0,
+                 fps: int = LOCAL_CAMERA_FPS) -> None:
+        super().__init__(daemon=True, name=f"camera-{index}")
+        self.session = session
+        self.fps = max(1, fps)
+        self._stop = threading.Event()
+        backend = cv2.CAP_DSHOW if sys.platform.startswith("win") else cv2.CAP_ANY
+        self.cap = cv2.VideoCapture(index, backend)
+        if not self.cap.isOpened() and backend != cv2.CAP_ANY:
+            self.cap.release()
+            self.cap = cv2.VideoCapture(index)
+
+    def run(self) -> None:
+        if not self.cap.isOpened():
+            self.session.camera_error = "打不开电脑摄像头（可能被其他程序占用，或系统未授权）"
+            print(f"[OCC] {self.session.camera_error}", flush=True)
+            return
+        self.session.camera_error = ""
+        print("[OCC] 电脑摄像头已连接", flush=True)
+        period = 1.0 / self.fps
+        while not self._stop.is_set():
+            ok, frame = self.cap.read()
+            if not ok or frame is None:
+                self.session.camera_error = "电脑摄像头读取中断"
+                print(f"[OCC] {self.session.camera_error}", flush=True)
+                break
+            ok, buf = cv2.imencode(".jpg", frame,
+                                   [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+            if not ok:
+                continue
+            try:
+                self.session.frame(buf.tobytes())
+            except Exception as exc:             # noqa: BLE001
+                self.session.camera_error = f"识别帧处理失败：{exc}"
+                print(f"[OCC] {self.session.camera_error}", flush=True)
+                break
+            self._stop.wait(period)
+
+    def stop(self) -> None:
+        self._stop.set()
+        self.cap.release()
+
+
 class OcclusionSession:
     def __init__(self, config: str | None = None,
                  resolution=(1280, 720), fresh_s: float = 30.0,
@@ -266,7 +318,9 @@ class OcclusionSession:
         self.lock = threading.Lock()
         self.objs: dict[str, Obj] = {}
         self.last_jpeg: bytes | None = None
+        self.last_payload: dict | None = None
         self.last_clean: np.ndarray | None = None
+        self.camera_error = ""
         self.last_patches: dict[str, np.ndarray] = {}
         self.last_bbox: dict[str, tuple] = {}
         self.clean_gray: dict[str, np.ndarray] = {}
@@ -531,7 +585,9 @@ class OcclusionSession:
             ann = self._annotate(img, seen, obstacles)
             ok, buf = cv2.imencode(".jpg", ann, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_Q])
             self.last_jpeg = buf.tobytes() if ok else None
-            return self._payload(seen, occluded_now, decisions)
+            payload = self._payload(seen, occluded_now, decisions)
+            self.last_payload = payload
+            return payload
 
     # ------------------------------------------------------------ 障碍物范围
     def _occluder_bbox(self, gray: np.ndarray, oid: str, bbox) -> tuple | None:
@@ -599,7 +655,8 @@ class OcclusionSession:
                 "baseline_ready": self.baseline is not None,
                 "baseline_seen": len(self._base_buf),
                 "events": list(self.events),
-                "frames": self.frames}
+                "frames": self.frames,
+                "camera_error": self.camera_error}
 
     # ------------------------------------------------------------ 标注
     def _annotate(self, img, seen, obstacles) -> np.ndarray:
@@ -680,15 +737,16 @@ button{flex:1;padding:14px 10px;border-radius:11px;border:1px solid #33507a;back
   <div class="hud" id="hud">—</div>
 </div>
 
-<div class="msg" id="msg">正在请求摄像头权限…</div>
+<div class="msg" id="msg">正在连接摄像头…</div>
 <div id="cards"></div>
 <div class="bar"><button id="clr">重新学习空桌</button></div>
 <div class="note">全程不需要点屏幕：开页面时桌面尽量空着，它用前 12 帧记住空桌，
 之后放上去的东西会自动被识别（连续出现 3 帧才确认）。<br>
-几何说明：手机没有深度，位置由像素反投影到桌面平面得到，相机位姿为演示用的
+几何说明：手机/电脑摄像头没有深度，位置由像素反投影到桌面平面得到，相机位姿为演示用的
 固定假设值（≈ 机器人腕部俯视桌面），不是标定结果。</div>
 
 <script>
+const LOCAL_MODE=__LOCAL_MODE__;
 const v=document.getElementById('v'), shot=document.getElementById('shot');
 const hud=document.getElementById('hud'), msg=document.getElementById('msg');
 const st=document.getElementById('st'), cards=document.getElementById('cards');
@@ -717,12 +775,23 @@ async function pump(){
   }catch(e){ setMsg('连接中断：'+e.message,'bad'); }
   finally{ busy=false; }
 }
+async function pumpLocal(){
+  if(busy) return; busy=true;
+  try{
+    const j=await (await fetch('/state')).json();
+    if(j.camera_error){ setMsg(j.camera_error,'bad'); }
+    if(j.image) shot.src='data:image/jpeg;base64,'+j.image;
+    render(j);
+  }catch(e){ setMsg('连接中断：'+e.message,'bad'); }
+  finally{ busy=false; }
+}
 
 const EVID={visible:'看得见',occluded:'被判遮挡',missing:'按丢失处理'};
 function render(j){
-  st.textContent = !j.baseline_ready ? '正在记忆空桌'
-                 : (!j.objects.length ? '等待目标'
-                    : (j.objects.some(o=>o.state==='occluded')? '遮挡中':'跟踪中'));
+  st.textContent = j.camera_error ? '摄像头未连接'
+                 : (!j.baseline_ready ? '正在记忆空桌'
+                    : (!j.objects.length ? '等待目标'
+                       : (j.objects.some(o=>o.state==='occluded')? '遮挡中':'跟踪中')));
   hud.textContent='objects='+j.objects.length+'  obstacles='+j.obstacles
                  +'  frames='+j.frames+(j.baseline_ready?'':'  base='+j.baseline_seen);
 
@@ -752,12 +821,16 @@ function render(j){
                       : '正在学习空桌，请让桌面空着（前 12 帧）'}</span></div></div>`;
 
   const occ=j.objects.filter(o=>o.state==='occluded').length;
-  if(!j.baseline_ready) setMsg('正在学习空桌，请让桌面空着…');
+  if(j.camera_error) setMsg(j.camera_error,'bad');
+  else if(!j.baseline_ready) setMsg('正在学习空桌，请让桌面空着…');
   else if(!j.objects.length) setMsg('把积木放上去，会自动识别（不用点屏幕）');
   else if(occ) setMsg('目标被挡住了 —— 记忆位置保持不动，正在用记忆位姿决策','ok');
   else setMsg('已识别 '+j.objects.length+' 个物体并记住位置（现在可以拿盒子挡上去）','ok');
 }
-async function loop(){ await pump(); setTimeout(loop, 250); }
+async function loop(){
+  if(LOCAL_MODE) await pumpLocal(); else await pump();
+  setTimeout(loop, 250);
+}
 
 document.getElementById('clr').onclick=async()=>{
   await fetch('/reset',{method:'POST'});
@@ -765,6 +838,11 @@ document.getElementById('clr').onclick=async()=>{
 };
 
 (async()=>{
+  if(LOCAL_MODE){
+    setMsg('电脑摄像头由服务端直连，正在等待画面…');
+    loop();
+    return;
+  }
   try{
     const stream=await navigator.mediaDevices.getUserMedia({
       video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
@@ -778,8 +856,13 @@ document.getElementById('clr').onclick=async()=>{
 </script></body></html>"""
 
 
+def page_html(local_mode: bool) -> str:
+    return PAGE.replace("__LOCAL_MODE__", "true" if local_mode else "false")
+
+
 class Handler(BaseHTTPRequestHandler):
     session: OcclusionSession | None = None
+    local_mode = False
 
     def log_message(self, fmt, *args):
         if str(args[1] if len(args) > 1 else "") not in ("200", "304"):
@@ -806,12 +889,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):                       # noqa: N802
         path = urlparse(self.path).path
         if path in ("/", "/index.html"):
-            self._send(PAGE.encode(), "text/html; charset=utf-8")
+            html = page_html(self.local_mode)
+            self._send(html.encode(), "text/html; charset=utf-8")
         elif path == "/shot":
             if not self.session or not self.session.last_jpeg:
                 self.send_error(404)
                 return
             self._send(self.session.last_jpeg, "image/jpeg")
+        elif path == "/state":
+            payload = dict(self.session.last_payload or {
+                "ok": True, "image": None, "objects": [], "decisions": {},
+                "obstacles": 0, "baseline_ready": False, "baseline_seen": 0,
+                "events": [], "frames": 0})
+            payload["camera_error"] = self.session.camera_error
+            payload["local_mode"] = self.local_mode
+            self._json(payload)
         else:
             self.send_error(404)
 
@@ -839,24 +931,42 @@ def main(argv=None) -> int:
                    help="记忆新鲜期：这个时间内允许直接盲抓")
     p.add_argument("--no-color", action="store_true",
                    help="不用调色板，只靠空桌差分找新出现的物体")
+    p.add_argument("--local-camera", type=int, default=None, metavar="N",
+                   help="服务端直接读取电脑摄像头 N（0 为默认摄像头），网页不再申请权限")
+    p.add_argument("--http", action="store_true",
+                   help="使用本地 HTTP（配合 --local-camera，避免自签证书告警）")
     args = p.parse_args(argv)
 
     res = tuple(int(v) for v in args.res.lower().split("x"))
     ips = _lan_ips()
-    cert, key = ensure_cert(ips)
     session = OcclusionSession(args.config, resolution=res,
                                fresh_s=args.fresh_s, use_color=not args.no_color)
     Handler.session = session
+    Handler.local_mode = args.local_camera is not None
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ctx.load_cert_chain(str(cert), str(key))
-    httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+    cert = None
+    if not args.http:
+        cert, key = ensure_cert(ips)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(str(cert), str(key))
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
 
+    camera = None
+    if args.local_camera is not None:
+        camera = LocalCamera(session, args.local_camera)
+        camera.start()
+
+    scheme = "http" if args.http else "https"
     print("=" * 62, flush=True)
-    for ip in ips:
+    if args.local_camera is not None:
+        print(f"[OCC] 电脑摄像头直连 camera={args.local_camera}", flush=True)
+    hosts = (["127.0.0.1"] if args.host in ("127.0.0.1", "localhost")
+             else ips)
+    for ip in hosts:
         tag = "  ← 手机连『移动热点』用这个" if ip.startswith("192.168.137.") else ""
-        print(f"[OCC] 手机打开  https://{ip}:{args.port}{tag}", flush=True)
-    print("[OCC] 首次会提示『连接不是私密连接』→ 高级 → 继续前往", flush=True)
+        print(f"[OCC] 打开  {scheme}://{ip}:{args.port}{tag}", flush=True)
+    if not args.http:
+        print("[OCC] 首次会提示『连接不是私密连接』→ 高级 → 继续前往", flush=True)
     print("[OCC] 开页面时桌面尽量空着 → 放积木（自动识别）→ 拿盒子挡住 → 看决策",
           flush=True)
     print("=" * 62, flush=True)
@@ -865,6 +975,8 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         print("\n[OCC] 退出", flush=True)
     finally:
+        if camera is not None:
+            camera.stop()
         httpd.server_close()
     return 0
 

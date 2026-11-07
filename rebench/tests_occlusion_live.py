@@ -10,7 +10,8 @@ import numpy as np
 
 from .occlusion import MISSING, OCCLUDED, VISIBLE
 from .tools.occlusion_live import (BASELINE_FRAMES, FG_CONFIRM_FRAMES,
-                                   MISSING_PURGE_FRAMES, OcclusionSession)
+                                   MISSING_PURGE_FRAMES, OcclusionSession,
+                                   page_html)
 
 
 def jpeg(img):
@@ -47,6 +48,14 @@ class OcclusionLiveTest(unittest.TestCase):
         img = scene.copy()
         cv2.rectangle(img, (330, 240), (600, bottom), (52, 48, 46), -1)
         return img
+
+    def test_local_camera_page_skips_browser_permission(self):
+        html = page_html(True)
+        self.assertNotIn("__LOCAL_MODE__", html)
+        self.assertIn("const LOCAL_MODE=true;", html)
+        self.assertIn("fetch('/state')", html)
+        self.assertIn("电脑摄像头由服务端直连", html)
+        self.assertIn("const LOCAL_MODE=false;", page_html(False))
 
     def test_color_boxes_cover_entire_objects(self):
         _s, result = self.session(self.color_scene)
