@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict'),plan=require('./presets');
+const js=[{name:'head_joint2',position:0,fresh:true,limits:[-.2,.5]},...Array.from({length:7},(_,i)=>({name:'left_arm_joint'+(i+1),position:0,fresh:true,limits:[-1,1]}))];
+assert.equal(plan('nod',js,'left_arm',5)[1].target,0);
+assert.equal(plan('wave',js,'left_arm',5).length,5);
+assert.throws(()=>plan('raise',js,'left_arm',5),/识别/);
+assert.equal(plan('raise',js,'left_arm',5,{side:'left_arm',joints:js.slice(1)}).length,7);
+assert.throws(()=>plan('wave',js.map(j=>({...j,limits:[0,.1]})),'left_arm',5),/限位/);
+assert.throws(()=>plan('nod',js.map(j=>({...j,fresh:false})),'left_arm',5),/状态/);
+console.log('Preset planner checks passed');
+const {AutoRaiseTracker}=require('./presets');
+const tracker=new AutoRaiseTracker(),p={arms:{left_arm:{valid:true,raised:true,moving:false}}};
+tracker.update(js,p,0);tracker.update(js,p,600);assert.equal(tracker.targets.left_arm,undefined);
+tracker.update(js,p,1200);assert.equal(tracker.targets.left_arm.source,'auto');
+const bad=new AutoRaiseTracker();bad.update(js,p,0);bad.update(js.map(j=>({...j,fresh:false})),p,1300);assert.equal(bad.targets.left_arm,undefined);
+const paused=new AutoRaiseTracker();paused.update(js,p,0);paused.update(js,p,1600,true);assert.equal(paused.targets.left_arm,undefined);
+console.log('Automatic raise recognition checks passed');
