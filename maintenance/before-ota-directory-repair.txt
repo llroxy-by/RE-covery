@@ -1,0 +1,23 @@
+2026-11-07T07:49:36+08:00
+galbot-echo
+uid=1000(galbot) gid=1000(galbot) groups=1000(galbot),4(adm),24(cdrom),27(sudo),29(audio),30(dip),44(video),46(plugdev),103(render),113(i2c),116(lpadmin),119(sambashare),130(gdm),134(docker),996(weston-launch),999(gpio),1001(jtop)
+f: /userdata/update/ota_task
+drwxr-xr-x root   root   /
+drwxr-xr-x galbot galbot userdata
+drwxr-xr-x root   root   update
+                         ota_task - No such file or directory
+# file: /userdata/update
+# owner: root
+# group: root
+user::rwx
+group::r-x
+other::r-x
+
+NRestarts=4904
+User=galbot
+Group=galbot
+ActiveState=active
+SubState=running
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs            31G   31G     0 100% /dev/shm
+TARGET_ABSENT

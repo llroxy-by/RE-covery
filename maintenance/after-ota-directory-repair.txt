@@ -1,0 +1,16 @@
+2026-11-07T07:50:55+08:00
+/userdata/update root:root 755
+/userdata/update/ota_task galbot:galbot 755
+# file: /userdata/update/ota_task
+# owner: galbot
+# group: galbot
+user::rwx
+group::r-x
+other::r-x
+
+GALBOT_WRITE_ACCESS_OK
+Filesystem      Size  Used Avail Use% Mounted on
+tmpfs            31G   31G     0 100% /dev/shm
+NRestarts=4904
+ActiveState=active
+SubState=running
