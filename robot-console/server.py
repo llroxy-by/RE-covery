@@ -48,8 +48,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
  def out(self,obj,status=200):
   data=json.dumps(obj).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(data)
  def do_GET(self):
-  if self.path=='/presets.js':
-   b=(ROOT/'presets.js').read_bytes();self.send_response(200);self.send_header('Content-Type','application/javascript');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b)
+  if self.path in ('/presets.js','/joystick.js'):
+   b=(ROOT/self.path[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','application/javascript');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b)
   elif self.path=='/':
    b=(ROOT/'index.html').read_bytes().replace(b'__TOKEN__',TOKEN.encode());self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b)
   else:self.out({'error':'Not found'},404)
@@ -74,9 +74,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     if time.monotonic()<busy_until:raise ValueError('上一动作尚未结束')
     r=call('gripper',side=req.get('side','left'),width_mm=req['width_mm'],velocity_mps=req['velocity_mps'],effort=req['effort'])
    elif action=='base':
-    if req.get('w') and (req.get('confirmed') is not True or time.monotonic()-last_browser>1.2):raise ValueError('请确认底盘现场安全与实时连接')
-    if req.get('w') and time.monotonic()<busy_until:raise ValueError('请先完成关节运动')
-    r=call('base',w=req['w'],sequence=req['sequence'])
+    if (req.get('w') or req.get('v')) and (req.get('confirmed') is not True or last_browser<=0 or time.monotonic()-last_browser>1.2):raise ValueError('请确认底盘现场安全与实时连接')
+    if (req.get('w') or req.get('v')) and time.monotonic()<busy_until:raise ValueError('请先完成关节运动')
+    r=call('base',w=req['w'],v=req.get('v',0.),sequence=req['sequence'])
    elif action=='move':
     if fault:raise ValueError(fault)
     if last_browser<=0 or time.monotonic()-last_browser>1.2:raise ValueError('状态已过期')

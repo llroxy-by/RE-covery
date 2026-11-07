@@ -73,3 +73,13 @@ python3 server.py
 参考：https://developer.galbot.com/docs/SDK/1.10.0/g1/zh/api_python_reference
 
 本项目依赖 Python 3.8+、OpenSSH，网页无需构建。启动与 SDK 路径见上文。运行测试：`python3 -B test_guards.py`、`python3 -B test_server.py`（测试专用18765端口）、`python3 -B test_posture.py`、`python3 -B test_liveness.py`、`python3 -B test_gripper.py`、`node test_presets.js`。测试使用模拟 SDK，不触碰机器人。
+
+## 底盘操纵杆
+
+参考队友分支 `g1-wireless-motion` 提交 `ae88bdd` 的 `g1-wireless/reverse_remote.py`，采用单次 `set_base_velocity(..., duration_s=0)` 指令与显式 `stop_base()`。接入本控制台既有桥接，不启动第二个 SDK 客户端。
+
+操纵杆上下控制前后，左右控制转向，可组合前后与转向，不发送侧向平移。前后速度 0.01–0.20 m/s（默认0.05），转向 0.01–0.30 rad/s（默认0.05）。拖动前勾选现场确认。松开、指针取消、失焦、页面隐藏、取消确认或状态请求失败时请求停止。方向键按住控制，松开停止；调速先停止，需要重新操作。
+
+远端以10Hz单次续发，600ms无操作续租时停止；状态轮询不能维持移动。拒绝非法数值、超速、乱序旧指令。软件停止可能因网络或SDK故障失败，须保留现场看护及实体急停。
+
+测试：`node test_joystick.js`、`python3 -B test_base_drive.py`。测试使用模拟SDK覆盖方向、超速、断联续租和停止。新增前后及组合转弯尚未执行真机测试。
