@@ -13,7 +13,7 @@
 
 ```bash
 python -m rebench.tools.occlusion_live --port 8302 --no-color \
-  --local-camera 0 --http --host 127.0.0.1
+  --local-camera 1 --http --host 127.0.0.1
 ```
 
 电脑浏览器打开：
@@ -22,7 +22,7 @@ python -m rebench.tools.occlusion_live --port 8302 --no-color \
 http://127.0.0.1:8302
 ```
 
-服务端通过 OpenCV 直接读取摄像头，网页只轮询 `/state` 并显示标注结果。若 `camera=0` 不是目标摄像头，可换 `--local-camera 1`。页面提示打不开摄像头时，先检查摄像头是否被会议软件占用、Windows 隐私设置是否允许桌面应用访问。
+服务端通过 OpenCV 直接读取摄像头，网页只轮询 `/state` 并显示标注结果。摄像头编号必须以实机枚举结果为准：本机 `camera=0` 是未连接的虚拟设备，输出纯黑；`camera=1` 才是正常的 1280×720 画面。若画面全黑，依次尝试 `--local-camera 1/2/3`。页面提示打不开摄像头时，先检查摄像头是否被会议软件占用、Windows 隐私设置是否允许桌面应用访问。
 
 手机仍使用浏览器摄像头模式，与电脑连接同一局域网后：
 
@@ -155,6 +155,8 @@ Ran 57 tests — OK
 | 现象 | 首查 |
 |---|---|
 | 手机打不开页面 | 是否同一局域网；必须使用 HTTPS；自签证书需点「继续前往」 |
+| 电脑页面有界面但画面全黑 | 多半选到了未连接的虚拟摄像头；本机 `camera=0` 全黑，改用 `--local-camera 1` |
+| 服务日志出现 `Bad request version` | 用 `https` 打开了 `--http` 端口；电脑直连必须用 `http://127.0.0.1:8302` |
 | 一直不识别新物体 | 前 12 帧是否真是空桌；手机是否移动；点击「重新学习空桌」后重试 |
 | 框碎成多个 | 目标与桌面反差是否足够；现场可优先用调色板覆盖的积木 |
 | 挡住后仍显示可见 | 盒子是否真正遮住完整目标，而非只盖住一角 |
@@ -165,9 +167,9 @@ Ran 57 tests — OK
 ## 11. 命令速查
 
 ```bash
-# 电脑摄像头直连
+# 电脑摄像头直连（本机 camera=1 才是正常画面）
 python -m rebench.tools.occlusion_live --port 8302 --no-color \
-  --local-camera 0 --http --host 127.0.0.1
+  --local-camera 1 --http --host 127.0.0.1
 
 # 手机浏览器摄像头
 python -m rebench.tools.occlusion_live --port 8302 --no-color
@@ -176,3 +178,34 @@ python -m rebench.tools.occlusion_live --fresh-s 60
 python -m unittest rebench.tests_occlusion_live -v
 python -m rebench --mock --rounds 1 --occlude block_red
 ```
+
+## 12. 交付状态与 GitHub 网络
+
+截至 2026-11-07：
+
+| 项 | 当前值 |
+|---|---|
+| 工作分支 | `feat/occlusion-memory` |
+| 代码基线 | `e6ea301`（电脑摄像头服务端直连） |
+| 远端 | `origin/feat/occlusion-memory`，本地与远端一致 |
+| 电脑演示 | `http://127.0.0.1:8302`，`camera=1`，纯前景检测 |
+| 手机演示 | `https://<电脑IP>:8302`，浏览器摄像头模式仍保留 |
+| 测试 | 视觉 79 项、复位/遮挡 57 项全部通过 |
+
+GitHub 代理端口会变化，不要写死旧值。先读环境变量，再做连通性检查：
+
+```bash
+printf '%s\n' "$HTTPS_PROXY"
+curl --ssl-no-revoke -s -o /dev/null -w '%{http_code}\n' https://github.com
+git -c http.proxy="$HTTPS_PROXY" -c http.sslBackend=schannel \
+  ls-remote origin refs/heads/feat/occlusion-memory
+```
+
+Windows Git 的 schannel 后端可能报 `CRYPT_E_NO_REVOCATION_CHECK`：代理能连通，但无法访问证书吊销服务。应显式指定代理与 backend，保留正常证书校验：
+
+```bash
+git -c http.proxy="$HTTPS_PROXY" -c http.sslBackend=schannel \
+  push origin feat/occlusion-memory
+```
+
+`http.schannelCheckRevoke=false` 实测无效；不要关闭证书校验。PR 页面需要仓库 owner 权限，当前连接器授权账号与 owner 不同时只能提供分支，无法直接创建 PR。
