@@ -5,6 +5,12 @@
 
 ---
 
+
+> **要直接照着跑，看 `docs/GRASP_HANDBOOK.md`** —— 那份文档把
+> `robot_exec.py`、`tools/plan_grasp.py`、`tools/oneshot_grasp.py`、
+> `tools/drive_and_grasp.py` 等**全部源码本体**都内嵌进去了，
+> 还包含启动命令、命令协议、标定值、可达区和安全红线，单文件自包含。
+
 ## 一、任务定义
 
 要解决的是**物体被遮挡后的持续性认知与检索**，具体场景：

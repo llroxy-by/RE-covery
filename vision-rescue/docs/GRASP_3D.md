@@ -1,5 +1,11 @@
 # 三维目标定位与抓取接入（2026-11-07）
 
+
+> **要直接照着跑，看 `docs/GRASP_HANDBOOK.md`** —— 那份文档把
+> `robot_exec.py`、`tools/plan_grasp.py`、`tools/oneshot_grasp.py`、
+> `tools/drive_and_grasp.py` 等**全部源码本体**都内嵌进去了，
+> 还包含启动命令、命令协议、标定值、可达区和安全红线，单文件自包含。
+
 ## 一句话结论
 
 **框选 → base_link 三维坐标 → 逆解可达性** 这条链已在真机上跑通，全部只读、不发运动。

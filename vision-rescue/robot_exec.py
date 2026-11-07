@@ -304,6 +304,121 @@ class Exec:
                 "ms": int((time.time() - t0) * 1000),
                 "cands": cands[:10]}
 
+    @staticmethod
+    def _gripper_mask(Pb, p_m, R_m):
+        """把实测的夹爪包围盒投到 base 系，返回"该点属于夹爪"的布尔掩码。
+
+        盒子（安装帧）：X 0.05~0.20，Y ±0.06，Z -0.03~0.03
+        """
+        loc = (Pb - p_m) @ R_m
+        return ((loc[:, 0] > 0.045) & (loc[:, 0] < 0.205) &
+                (np.abs(loc[:, 1]) < 0.062) & (np.abs(loc[:, 2]) < 0.032))
+
+    def cmd_target(self, req):
+        """在可达区内找最高的一个物体：1cm 高度图 -> 平滑 -> 取峰 -> 加权重心。
+
+        不做连通域，避免稀疏点云下簇形状抖动。
+        """
+        t0 = time.time()
+        nf = int(req.get("frames", 6))
+        xmin = float(req.get("xmin", 0.55)); xmax = float(req.get("xmax", 0.88))
+        ymin = float(req.get("ymin", -0.10)); ymax = float(req.get("ymax", 0.32))
+
+        ext = self.r.get_sensor_extrinsic(S.LEFT_ARM_DEPTH_CAMERA, "base_link")[0][:7]
+        t = np.array(ext[:3], float); R = q2R(ext[3:7])
+        K = self.intrinsics(); fx, fy, cx, cy = K[0], K[4], K[2], K[5]
+
+        frames = []
+        for _ in range(max(2, nf)):
+            d = self._depth()
+            w, h, unit = d["width"], d["height"], d["depth_scale"]
+            frames.append(np.frombuffer(bytes(d["data"]), dtype="<u2").reshape(h, w).astype(np.float32) / unit)
+        stk = np.stack(frames, 0); stk[stk <= 0] = np.nan
+        med = np.nan_to_num(np.nanmedian(stk, 0), nan=0.0)
+
+        msk = (med > 0.06) & (med < 0.80)
+        vs, us = np.nonzero(msk); zz = med[msk]
+        P = np.stack([(us - cx) * zz / fx, (vs - cy) * zz / fy, zz], axis=1)
+        Pb = (R @ P.T).T + t
+
+        mp = self.mount()
+        if mp is None:
+            return {"ok": False, "error": "no mount"}
+        p_m = mp[0]
+        lat0 = np.linalg.norm(Pb[:, :2] - p_m[:2], axis=1)
+        far = lat0 > 0.12
+        zpool = Pb[far][:, 2] if far.sum() > 2000 else Pb[:, 2]
+        lo = max(0.45, float(p_m[2]) - 0.45); hi = float(p_m[2]) - 0.04
+        hist, edges = np.histogram(zpool, bins=np.arange(lo, hi, 0.01))
+        if hist.sum() == 0:
+            return {"ok": False, "error": "no table"}
+        tz = float(edges[int(np.argmax(hist))] + 0.005)
+        near = np.abs(Pb[:, 2] - tz) < 0.015
+        for _ in range(4):
+            if near.sum() < 200:
+                break
+            zc = float(np.median(Pb[near][:, 2]))
+            near = np.abs(Pb[:, 2] - zc) < 0.010
+        if near.sum() >= 200:
+            tz = float(np.median(Pb[near][:, 2]))
+
+        # 只取可达窗口内、指尖以下的点
+        gm = self._gripper_mask(Pb, p_m, mp[1])
+        inwin = (Pb[:, 0] > xmin) & (Pb[:, 0] < xmax) & (Pb[:, 1] > ymin) & (Pb[:, 1] < ymax) & \
+                (Pb[:, 2] > tz + 0.020) & (Pb[:, 2] < tz + 0.15) & (~gm)
+        if inwin.sum() < 300:
+            return {"ok": False, "error": "窗口内点太少", "table_z": round(tz, 4)}
+
+        sub = Pb[inwin]
+        # 1cm 高度图
+        RES = 0.01
+        gx = ((sub[:, 0] - xmin) / RES).astype(int)
+        gy = ((sub[:, 1] - ymin) / RES).astype(int)
+        nx = int((xmax - xmin) / RES) + 1; ny = int((ymax - ymin) / RES) + 1
+        hmap = np.zeros((ny, nx), np.float32)
+        cnt = np.zeros((ny, nx), np.float32)
+        for a, b, z in zip(gy, gx, sub[:, 2] - tz):
+            if 0 <= a < ny and 0 <= b < nx:
+                hmap[a, b] += z; cnt[a, b] += 1
+        avg = np.where(cnt > 0, hmap / np.maximum(cnt, 1), 0)
+        ker = np.ones((3, 3), np.float32) / 9.0
+        try:
+            import cv2
+            sm = cv2.filter2D(avg, -1, ker)
+        except Exception:
+            sm = avg
+        # 取多个局部峰（按高度排序），供上层挑"够得着"的那个
+        peaks = []
+        work = sm.copy()
+        for _ in range(int(req.get("peaks", 3))):
+            pk = np.unravel_index(int(np.argmax(work)), work.shape)
+            ph = float(work[pk])
+            if ph < 0.02:
+                break
+            px = xmin + (pk[1] + 0.5) * RES
+            py = ymin + (pk[0] + 0.5) * RES
+            dxy = np.linalg.norm(sub[:, :2] - np.array([px, py]), axis=1)
+            sel = dxy < 0.05
+            if sel.sum() >= 50:
+                wgt = np.clip(sub[sel, 2] - tz, 0, None) ** 1.5
+                cxy = (sub[sel, :2] * wgt[:, None]).sum(0) / max(wgt.sum(), 1e-6)
+                top = float(np.percentile(sub[sel][:, 2], 97))
+                peaks.append({"xy": [round(float(cxy[0]), 3), round(float(cxy[1]), 3)],
+                              "peak_xy": [round(px, 3), round(py, 3)],
+                              "top_z": round(top, 4),
+                              "h_cm": round((top - tz) * 100, 1),
+                              "n": int(sel.sum())})
+            # 抹掉这个峰，避免重复
+            y0 = max(0, pk[0] - 4); y1 = min(ny, pk[0] + 5)
+            x0 = max(0, pk[1] - 4); x1 = min(nx, pk[1] + 5)
+            work[y0:y1, x0:x1] = 0
+        if not peaks:
+            return {"ok": False, "error": "没有高于 2cm 的物体", "table_z": round(tz, 4)}
+        out = {"ok": True, "table_z": round(tz, 4), "cands": peaks,
+               "ms": int((time.time() - t0) * 1000)}
+        out.update(peaks[0])
+        return out
+
     def cmd_ik(self, req):
         p_des = np.array([float(req["x"]), float(req["y"]), float(req["z"])])
         R_des = tool_orientation(float(req.get("tilt", 0.0)))
@@ -346,14 +461,27 @@ class Exec:
         P = np.stack([(us - cx) * zz / fx, (vs - cy) * zz / fy, zz], axis=1)
         Pb = (R @ P.T).T + t
 
-        # 桌面高度：z 直方图主峰
-        hist, edges = np.histogram(Pb[:, 2], bins=np.arange(0.4, 1.2, 0.01))
+        # 桌面高度：只在"远离工具轴"的点上找主峰，避免夹爪自身抢峰
+        mp0 = self.mount()
+        if mp0 is None:
+            return {"ok": False, "error": "no mount pose"}
+        lat0 = np.linalg.norm(Pb[:, :2] - mp0[0][:2], axis=1)
+        far = lat0 > 0.12
+        zpool = Pb[far][:, 2] if far.sum() > 2000 else Pb[:, 2]
+        lo = max(0.45, float(mp0[0][2]) - 0.45)
+        hi = float(mp0[0][2]) - 0.04
+        hist, edges = np.histogram(zpool, bins=np.arange(lo, hi, 0.01))
+        if hist.sum() == 0:
+            return {"ok": False, "error": "no table points"}
         tz = float(edges[int(np.argmax(hist))] + 0.005)
         near = np.abs(Pb[:, 2] - tz) < 0.015
         for _ in range(4):
+            if near.sum() < 200:
+                break
             zc = float(np.median(Pb[near][:, 2]))
             near = np.abs(Pb[:, 2] - zc) < 0.010
-        tz = float(np.median(Pb[near][:, 2]))
+        if near.sum() >= 200:
+            tz = float(np.median(Pb[near][:, 2]))
 
         mp = self.mount()
         if mp is None:
@@ -362,9 +490,9 @@ class Exec:
         rel = Pb[:, 2] - tz
         lat = np.linalg.norm(Pb[:, :2] - p_m[:2], axis=1)
         # 排除夹爪自身（工具轴附近）+ 只留桌面上方的合理高度
-        # 严格排除夹爪：只保留指尖以下的点（指尖 = mount - 指长）
-        tip_z = float(p_m[2]) - TOOL_LEN_M
-        cand = (Pb[:, 2] > tz + 0.018) & (Pb[:, 2] < tip_z - 0.008) & (lat < 0.32)
+        # 用实测包围盒精确剔除夹爪
+        gm = self._gripper_mask(Pb, p_m, self.mount()[1])
+        cand = (Pb[:, 2] > tz + 0.018) & (Pb[:, 2] < tz + 0.15) & (lat < 0.32) & (~gm)
 
         RES = 0.006
         X0, Y0 = float(p_m[0]) - 0.20, float(p_m[1]) - 0.20
@@ -446,6 +574,8 @@ def main():
                 out = ex.cmd_find(req)
             elif cmd == "ik":
                 out = ex.cmd_ik(req)
+            elif cmd == "target":
+                out = ex.cmd_target(req)
             elif cmd == "overview":
                 out = ex.cmd_overview(req)
             elif cmd == "base":
