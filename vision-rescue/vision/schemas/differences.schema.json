@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "baseline_id", "current_id", "timestamp", "mode", "status", "issues", "differences"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "baseline_id": {"type": "string"},
+    "current_id": {"type": "string"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "mode": {"enum": ["real", "mock"]},
+    "status": {"enum": ["unchanged", "misplaced", "new", "uncertain"]},
+    "issues": {"type": "array", "items": {"type": "string"}},
+    "differences": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["object_id", "status", "from_zone", "to_zone", "confidence", "reasons"],
+        "properties": {
+          "object_id": {"type": "string"},
+          "status": {"enum": ["unchanged", "misplaced", "new", "uncertain"]},
+          "from_zone": {"enum": ["A", "B", "C", "D", "TEMP", "unknown"]},
+          "to_zone": {"enum": ["A", "B", "C", "D", "TEMP", "unknown"]},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "reasons": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

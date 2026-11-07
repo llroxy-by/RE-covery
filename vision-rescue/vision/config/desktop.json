@@ -1,0 +1,201 @@
+{
+  "calibration_id": "desktop-v1",
+  "resolution": [
+    1280,
+    720
+  ],
+  "zone_margin_px": 10,
+  "min_area_px": 700,
+  "max_area_ratio": 0.22,
+  "stability_frames": 5,
+  "max_center_jitter_px": 18,
+  "confidence": {
+    "base": 0.95,
+    "min_fill_ratio": 0.55,
+    "zone_margin_penalty": 0.15,
+    "jitter_penalty": 0.25
+  },
+  "zones": {
+    "A": [
+      [
+        80,
+        180
+      ],
+      [
+        420,
+        180
+      ],
+      [
+        420,
+        480
+      ],
+      [
+        80,
+        480
+      ]
+    ],
+    "B": [
+      [
+        460,
+        180
+      ],
+      [
+        800,
+        180
+      ],
+      [
+        800,
+        480
+      ],
+      [
+        460,
+        480
+      ]
+    ],
+    "C": [
+      [
+        840,
+        180
+      ],
+      [
+        1180,
+        180
+      ],
+      [
+        1180,
+        480
+      ],
+      [
+        840,
+        480
+      ]
+    ],
+    "D": [
+      [
+        80,
+        520
+      ],
+      [
+        800,
+        520
+      ],
+      [
+        800,
+        660
+      ],
+      [
+        80,
+        660
+      ]
+    ],
+    "TEMP": [
+      [
+        840,
+        520
+      ],
+      [
+        1180,
+        520
+      ],
+      [
+        1180,
+        660
+      ],
+      [
+        840,
+        660
+      ]
+    ]
+  },
+  "colors": {
+    "red": {
+      "object_id": "block_red_01",
+      "ranges": [
+        [
+          [
+            0,
+            110,
+            70
+          ],
+          [
+            10,
+            255,
+            255
+          ]
+        ],
+        [
+          [
+            170,
+            110,
+            70
+          ],
+          [
+            180,
+            255,
+            255
+          ]
+        ]
+      ]
+    },
+    "green": {
+      "object_id": "block_green_01",
+      "ranges": [
+        [
+          [
+            40,
+            55,
+            60
+          ],
+          [
+            85,
+            255,
+            255
+          ]
+        ]
+      ]
+    }
+  },
+  "background": {
+    "note": "桌面本身是高饱和紫红（H 中位 123-125，占画面 81%），必须先声明为背景。不扣掉的话，找『不认识的东西』时整张桌子会连成一块 72 万像素的区域，既超过 max_area_ratio 被丢弃，又会把真正多出来的物体一起吞进去 —— 于是永远发现不了异物。",
+    "ranges": [
+      [
+        [
+          105,
+          35,
+          25
+        ],
+        [
+          168,
+          255,
+          255
+        ]
+      ]
+    ]
+  },
+  "label": {
+    "note": "primary=true 时标签就是定位依据，颜色完全不参与：找矩形标签 → 读上面的手写字母 → 这就是一件物体。模板库为空时自动退回按颜色认身份。",
+    "enabled": true,
+    "primary": true,
+    "bank": "vision/config/letters.npz",
+    "match_threshold": 0.6,
+    "threshold_note": "用真实照片实测：同一个字母转到任意角度重采样后自比最低 0.82；A 的字拿去认 B，24 个角度里最高只有 0.51。0.6 卡在两者之间。原来定 0.55 太低，会把别的字母当成本字母认出来。",
+    "angle_step": 15,
+    "reader": "auto",
+    "reader_note": "template=只靠本地模板库（必须现场登记，离线可用）；vlm=只靠视觉模型（不用登记，要联网+key，模板库空着也能认任意字母）；auto=有 key 就『模型为主、模板校验』，没 key 自动退回 template，所以没网也不影响演示。",
+    "vlm": {
+      "note": "走 OpenAI 兼容的 /chat/completions，换个 base_url + model 就能用通义/豆包/智谱/Kimi/本地 vLLM。api_key 写 env:变量名 从环境变量读，别把 key 提交进仓库。没配 key 时 reader=auto 会自动退回模板比对。",
+      "base_url": "https://api.llroxy.top/v1",
+      "model": "cn:kimi-k2.5",
+      "api_key": "env:VISION_API_KEY",
+      "timeout_s": 30,
+      "max_side": 512
+    },
+    "canny": [
+      60,
+      160
+    ],
+    "min_area_px": 3000,
+    "max_area_ratio": 0.1,
+    "min_side_px": 40
+  }
+}

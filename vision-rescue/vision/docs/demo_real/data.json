@@ -1,0 +1,120 @@
+{
+  "s0": {
+    "schema_version": "1.0",
+    "snapshot_id": "da360fab-aa32-4f43-8041-af833327bcf5",
+    "timestamp": "2026-11-06T16:49:59.732Z",
+    "mode": "real",
+    "source": "phone:upload",
+    "image": {
+      "reference": "",
+      "width": 1280,
+      "height": 720
+    },
+    "calibration": {
+      "id": "desktop-v1",
+      "valid": true,
+      "coordinate_frame": "image_pixels"
+    },
+    "quality_ok": true,
+    "issues": [],
+    "objects": [
+      {
+        "object_id": "block_green_01",
+        "zone": "TEMP",
+        "visibility": "visible",
+        "confidence": 0.95,
+        "center_px": [
+          967.39,
+          549.49
+        ],
+        "reasons": []
+      },
+      {
+        "object_id": "block_red_01",
+        "zone": "D",
+        "visibility": "visible",
+        "confidence": 0.95,
+        "center_px": [
+          418.49,
+          537.95
+        ],
+        "reasons": []
+      }
+    ]
+  },
+  "s1": {
+    "schema_version": "1.0",
+    "snapshot_id": "42d64e1c-ac42-44b2-b41d-f6fde6bb449b",
+    "timestamp": "2026-11-06T16:49:59.800Z",
+    "mode": "real",
+    "source": "phone:upload",
+    "image": {
+      "reference": "",
+      "width": 1280,
+      "height": 720
+    },
+    "calibration": {
+      "id": "desktop-v1",
+      "valid": true,
+      "coordinate_frame": "image_pixels"
+    },
+    "quality_ok": true,
+    "issues": [],
+    "objects": [
+      {
+        "object_id": "block_green_01",
+        "zone": "D",
+        "visibility": "visible",
+        "confidence": 0.95,
+        "center_px": [
+          334.01,
+          549.96
+        ],
+        "reasons": []
+      },
+      {
+        "object_id": "block_red_01",
+        "zone": "TEMP",
+        "visibility": "visible",
+        "confidence": 0.95,
+        "center_px": [
+          936.08,
+          532.45
+        ],
+        "reasons": []
+      }
+    ]
+  },
+  "diff": {
+    "schema_version": "1.0",
+    "baseline_id": "da360fab-aa32-4f43-8041-af833327bcf5",
+    "current_id": "42d64e1c-ac42-44b2-b41d-f6fde6bb449b",
+    "timestamp": "2026-11-06T16:49:59.831Z",
+    "mode": "real",
+    "status": "misplaced",
+    "issues": [],
+    "differences": [
+      {
+        "object_id": "block_green_01",
+        "status": "misplaced",
+        "from_zone": "TEMP",
+        "to_zone": "D",
+        "confidence": 0.95,
+        "reasons": [
+          "zone_changed"
+        ]
+      },
+      {
+        "object_id": "block_red_01",
+        "status": "misplaced",
+        "from_zone": "D",
+        "to_zone": "TEMP",
+        "confidence": 0.95,
+        "reasons": [
+          "zone_changed"
+        ]
+      }
+    ]
+  },
+  "verdict": "NOT_READY"
+}

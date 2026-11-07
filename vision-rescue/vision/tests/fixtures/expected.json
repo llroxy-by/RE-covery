@@ -1,0 +1,30 @@
+{
+  "s0.jpg": {
+    "scenario": "ok",
+    "expected_status_vs_s0": "baseline"
+  },
+  "s1_ok.jpg": {
+    "scenario": "ok",
+    "expected_status_vs_s0": "unchanged"
+  },
+  "s1_moved.jpg": {
+    "scenario": "moved",
+    "expected_status_vs_s0": "misplaced"
+  },
+  "s1_swapped.jpg": {
+    "scenario": "swapped",
+    "expected_status_vs_s0": "misplaced"
+  },
+  "s1_occluded.jpg": {
+    "scenario": "occluded",
+    "expected_status_vs_s0": "uncertain"
+  },
+  "s1_extra.jpg": {
+    "scenario": "extra",
+    "expected_status_vs_s0": "uncertain"
+  },
+  "s1_dim.jpg": {
+    "scenario": "dim",
+    "expected_status_vs_s0": "uncertain"
+  }
+}

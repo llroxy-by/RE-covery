@@ -1,0 +1,8 @@
+# 运行产物不入库：可能含真实画面（室内/人脸），按任务书要求脱敏后再共享
+records/*
+!records/TEST_LOG_TEMPLATE.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/

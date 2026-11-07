@@ -1,0 +1,5 @@
+vision/config/.env.local
+vision/records/*.jpg
+records/
+.venv-vision/
+__pycache__/
