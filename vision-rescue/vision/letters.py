@@ -152,6 +152,16 @@ def find_labels(img_bgr: np.ndarray, cfg: dict | None = None,
                 if stats is not None:
                     stats[-1]["why"] = f"短边 {min(bw, bh)}<{min_side}"
                 continue
+            # 贴在一块积木上的纸片，不可能占掉画面的一半以上。
+            # 不加这一条时，桌面上放一块**深色矩形**（现场最常见的就是挡在
+            # 前面的盒子）会让画面边框凑出一个 1280×706 的"标签"：面积占比
+            # 7.5% < max_area_ratio 10%、长宽比 1.8、内部又亮，一路通过，
+            # 然后 _dedupe 把所有真标签当成"被它包含"全吞掉。
+            # 症状是"放一个盒子，画面里所有目标一起消失"，看起来像识别崩了。
+            if bw > 0.5 * w or bh > 0.5 * h:
+                if stats is not None:
+                    stats[-1]["why"] = f"框太大 {bw}×{bh}（不像标签）"
+                continue
             quad = _order_quad(np.asarray(approx, np.float32).reshape(4, 2))
 
             # 长宽比要像一张纸。实测不过这一关的话，桌面上笔记本纸的横线
