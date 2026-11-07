@@ -1,22 +1,25 @@
-"""遮挡记忆演示 · 手机摄像头版（点选目标，不用标签）
+"""遮挡记忆演示 · 手机摄像头版（自主识别，无需人工点选）
 
     python -m rebench.tools.occlusion_live --port 8302
     手机打开 https://<电脑IP>:8302 → 高级 → 继续前往 → 允许摄像头
 
-现场三步：
-  1. **用手指点一下桌上的积木** → 页面锁定它，显示「已记忆 block_1 (x, y)」
-  2. 拿一个盒子挡在手机与积木之间 → 积木看不见了
-     → 页面切到「遮挡中」，记忆位置不动，并给出走廊判定与决策
-  3. 把盒子拿开 → 目标重新出现 → 「记忆校验通过」
+现场流程（全程不需要点屏幕）：
+  1. 打开页面时桌面尽量空着，它用前 1 秒自动记下"空桌长什么样"
+  2. 把积木放上去 → 自动识别成一个物体，**框住整块积木**，并记下三维位置
+  3. 拿盒子挡在积木前面 → 积木看不见了 → 页面切「遮挡中」，位置不动，给出决策
+  4. 把盒子拿开 → 目标重新出现 → 「记忆校验通过」
 
-为什么不用标签/字母：这条链路要演的是"遮挡后还记不记得"，身份怎么来不重要；
-现场随便拿一块积木就能演，不必先写字母、先登记。锁定用模板匹配，不依赖颜色
-阈值，也不假设桌布颜色。
+两条检测来源，都是自动的：
+  · **颜色**：`vision.detector.Detector` 按 `vision/config/desktop.json` 的调色板
+    找积木（红/绿…），ID 天然稳定（block_red_01），框取轮廓外接矩形 → 整块物体
+  · **前景**：相对"空桌基线"做差分，凡是新出现的整块区域都算一个物体，
+    任意颜色都行；用模板跟踪保持 ID（模板就是整块物体，不是固定小方格）
 
-跑的是 `rebench/occlusion.py` 里真正的判据（WorldModel / check_vertical_approach
-/ pick_strategy）。唯一"演"的地方是几何：手机没有深度，相机位姿是**固定假设值**
-（大致等于机器人腕部俯视桌面），三维坐标由像素反投影到桌面平面得到。
-页面上标了「演示几何」，不要拿这些数当标定结果。
+判据用的是 `rebench/occlusion.py` 里真正的逻辑（WorldModel /
+check_vertical_approach / pick_strategy），不是另写一套演示代码。
+
+几何仍是**演示用假设值**（手机没有深度）：相机位姿固定，位置由像素反投影到
+桌面平面得到。所以屏幕上的坐标只能用来演示"记忆没变"，不能当标定结果。
 """
 
 from __future__ import annotations
@@ -26,9 +29,11 @@ import base64
 import json
 import math
 import ssl
+import sys
 import threading
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlparse
 
 import cv2
@@ -36,14 +41,22 @@ import numpy as np
 
 from ..occlusion import (Box3D, OCCLUDED, WorldModel,
                          check_vertical_approach, pick_strategy)
+
+# 功能分支把视觉源码放在 vision-rescue/vision/，主分支则放在 vision/。
+# 在首次 import 前选好路径：若先让顶层空目录变成 namespace package，再补 sys.path，
+# Python 可能仍缓存错误的包路径，随后继续报“没有 vision.detector”。
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_VISION_ROOT = _REPO_ROOT / "vision"
+if not (_VISION_ROOT / "detector.py").is_file():
+    _VISION_ROOT = _REPO_ROOT / "vision-rescue" / "vision"
+    sys.path.insert(0, str(_VISION_ROOT.parent))
+from vision.detector import Detector
 from vision.tools.phone_live import _lan_ips, ensure_cert, fit_photo
 
 MAX_UPLOAD = 8 * 1024 * 1024
 JPEG_Q = 68
 
 # ---------------------------------------------------------------- 演示用几何
-# 相机位姿是**假设值**：当作一台装在腕部、俯视桌面的 1280×720 相机。
-# 内参取自任务书里 D405 的实测值（fx 657.4 / fy 656.9 / cx 636.4 / cy 356.1）。
 CAM_POS = np.array([0.30, 0.0, 1.05])
 CAM_LOOK = np.array([0.72, 0.0, 0.71])
 TABLE_Z = 0.71
@@ -51,35 +64,33 @@ K = dict(fx=657.4, fy=656.9, cx=636.4, cy=356.1)
 OBJ_WIDTH = 0.040
 OBJ_HALF_H = 0.020
 
-# 跟踪参数
-TPL = 72                 # 锁定用的模板边长（像素）
-MATCH_SCALE = 0.5        # 匹配时画面缩一半，快一倍
-SEARCH_PAD = 150         # 每帧只在上一位置附近搜，避免匹配到别处
-MIN_SCORE = 0.42         # 低于这个相关系数就算"看不见了"
-PATCH_DIFF_OCCLUDED = 12.0   # 区域灰度变化超过这个 → 那里被东西占了
-PATCH_DIFF_EMPTY = 6.0       # 低于这个 → 那里变回空桌面，东西真被拿走
-# 障碍物进深按"薄板"估。单目看不出盒子有多厚：用宽度去推厚度是错的
-# （宽盒子会被算成很深，于是永远判"挡手"）。要精确厚度只能用腕部深度相机，
-# 这也是文档里写"真机必须用深度"的原因之一。
-BOX_DEPTH_EST = 0.05
+# ---------------------------------------------------------------- 检测参数
+BASELINE_FRAMES = 12       # 用前 12 帧（约 1 秒）学空桌基线
+FG_DIFF = 26               # 与空桌的灰度差超过这个算"有东西"
+FG_MIN_AREA = 2500         # 小于这个面积的斑点当噪声
+TPL_MAX_SIDE = 160         # 模板最长边（整块物体的裁剪）
+MATCH_MIN = 0.50           # 模板匹配低于这个算"看不见了"
+SEARCH_PAD_RATIO = 0.6     # 在上一位置多大范围里找
+PATCH_DIFF_OCCLUDED = 12.0 # 区域灰度变化超过这个 → 被别的东西占了
+PATCH_DIFF_EMPTY = 6.0     # 低于这个 → 变回空桌面，东西真被拿走了
+BOX_DEPTH_EST = 0.05       # 障碍物进深按薄板估（单目看不出厚度）
 
 
+# ---------------------------------------------------------------- 几何
 def _basis(pos: np.ndarray, look: np.ndarray) -> np.ndarray:
-    """世界 → 相机 的旋转（相机轴：x 右、y 下、z 前）。"""
     f = look - pos
     f = f / np.linalg.norm(f)
     up = np.array([0.0, 0.0, 1.0])
     r = np.cross(f, up)
     r = r / np.linalg.norm(r)
     d = np.cross(f, r)
-    return np.stack([r, d, f], axis=1)      # 列向量
+    return np.stack([r, d, f], axis=1)
 
 
 R_CAM = _basis(CAM_POS, CAM_LOOK)
 
 
 def pixel_to_table(u: float, v: float) -> tuple[float, float] | None:
-    """像素 → 桌面平面上的 (x, y)（base_link 米）。没有交点就返回 None。"""
     d_cam = np.array([(u - K["cx"]) / K["fx"], (v - K["cy"]) / K["fy"], 1.0])
     d_world = R_CAM @ (d_cam / np.linalg.norm(d_cam))
     if abs(d_world[2]) < 1e-6:
@@ -92,11 +103,7 @@ def pixel_to_table(u: float, v: float) -> tuple[float, float] | None:
 
 
 def bbox_pose_table(bbox) -> tuple[float, float, float] | None:
-    """目标框 → 落点三维位置。
-
-    用**底边中点**而不是框中心：从上方垂直下爪，关心的是"它坐在桌面的哪一点"，
-    框中心会系统性偏几厘米。
-    """
+    """物体框 → 落点三维位置。用底边中点：从上方垂直下爪，关心它坐在哪一点。"""
     x, y, w, h = bbox
     hit = pixel_to_table(x + w / 2.0, y + h)
     if hit is None:
@@ -105,116 +112,233 @@ def bbox_pose_table(bbox) -> tuple[float, float, float] | None:
 
 
 def bbox_to_box(bbox, height_m: float = 0.18) -> Box3D | None:
-    """把障碍物框反投影成桌面上的盒子。
+    """障碍物框 → 桌面上的盒子。
 
-    **只用底边，不用整块 bbox。** 单目图像里"盒子挡在前面"和"盒子压在目标
-    正上方"投影几乎一样，用整块 bbox 反投影一定盖住目标，走廊永远判"被占"，
-    演示就变成"什么都不敢抓"。而物体与桌面的**接触线**（底边）才是它真正的
-    落脚位置：挡在前面的盒子接触线在目标之前，压在正上方的盒子接触线就在
-    目标自己的位置 —— 这两种情况的正确处置本来就相反，也只能靠这条线分开。
+    只用**底边**（接触线）：单目图像里"挡在前面"和"压在正上方"投影几乎一样，
+    用整块 bbox 反投影一定盖住目标，走廊永远判"被占"，系统就变成什么都不敢抓。
+    而物体与桌面的接触线才是它真正的落脚位置，这两种情况也只有它能分开。
     """
     x, y, w, h = bbox
     n1 = pixel_to_table(x + 0.10 * w, y + h)
     n2 = pixel_to_table(x + 0.90 * w, y + h)
     if n1 is None or n2 is None:
         return None
-    depth = BOX_DEPTH_EST
     xs = [n1[0], n2[0]]
     ys = [n1[1], n2[1]]
-    return Box3D(min(xs), max(xs) + depth,
+    return Box3D(min(xs), max(xs) + BOX_DEPTH_EST,
                  min(ys) - 0.02, max(ys) + 0.02,
                  TABLE_Z, TABLE_Z + height_m)
 
 
-class Track:
-    """点选锁定后的一路模板跟踪。"""
+def _iou(a, b) -> float:
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    x0, y0 = max(ax, bx), max(ay, by)
+    x1, y1 = min(ax + aw, bx + bw), min(ay + ah, by + bh)
+    inter = max(0, x1 - x0) * max(0, y1 - y0)
+    union = aw * ah + bw * bh - inter
+    return inter / union if union > 0 else 0.0
 
-    def __init__(self, oid: str, frame: np.ndarray, u: float, v: float) -> None:
+
+def _covers(outer, inner, ratio: float = 0.5) -> bool:
+    """inner 有多大比例落在 outer 里。用来判断"这块区域是不是把某个目标盖住了"。"""
+    ox, oy, ow, oh = outer
+    ix, iy, iw, ih = inner
+    x0, y0 = max(ox, ix), max(oy, iy)
+    x1, y1 = min(ox + ow, ix + iw), min(oy + oh, iy + ih)
+    inter = max(0, x1 - x0) * max(0, y1 - y0)
+    return inter >= ratio * float(max(iw * ih, 1))
+
+
+def _patch(gray: np.ndarray, bbox) -> np.ndarray:
+    x, y, w, h = bbox
+    hh, ww = gray.shape[:2]
+    x0, y0 = max(0, x), max(0, y)
+    x1, y1 = min(ww, x + w), min(hh, y + h)
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return np.zeros((16, 16), np.uint8)
+    return cv2.resize(gray[y0:y1, x0:x1], (16, 16), interpolation=cv2.INTER_AREA)
+
+
+# ---------------------------------------------------------------- 物体
+class Obj:
+    """一个被跟踪的物体：**整块外接框** + 外观模板。"""
+
+    def __init__(self, oid: str, frame: np.ndarray, bbox, source: str) -> None:
         self.id = oid
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        half = TPL // 2
-        x0 = int(max(0, min(gray.shape[1] - TPL, round(u) - half)))
-        y0 = int(max(0, min(gray.shape[0] - TPL, round(v) - half)))
-        self.tpl = gray[y0:y0 + TPL, x0:x0 + TPL].copy()
-        self.bbox = (x0, y0, TPL, TPL)
-        self.score = 1.0
+        self.bbox = tuple(int(v) for v in bbox)
+        self.source = source            # "color" | "fg"
+        self.tpl: np.ndarray | None = None
+        self.tpl_size = (0, 0)
+        self.set_template(frame)
 
-    def match(self, frame: np.ndarray) -> tuple[tuple[int, int, int, int], float]:
-        """在上一位置附近找模板。返回 (bbox, 相关系数)。"""
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    def set_template(self, frame: np.ndarray) -> None:
+        """模板 = 整个物体框里的灰度图（按最长边缩放，保留长宽比）。"""
+        g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         x, y, w, h = self.bbox
-        sx0 = max(0, x - SEARCH_PAD)
-        sy0 = max(0, y - SEARCH_PAD)
-        sx1 = min(gray.shape[1], x + w + SEARCH_PAD)
-        sy1 = min(gray.shape[0], y + h + SEARCH_PAD)
-        if sx1 - sx0 < TPL or sy1 - sy0 < TPL:
-            return self.bbox, 0.0
+        hh, ww = g.shape[:2]
+        x0, y0 = max(0, x), max(0, y)
+        x1, y1 = min(ww, x + w), min(hh, y + h)
+        if x1 - x0 < 12 or y1 - y0 < 12:
+            self.tpl = None
+            return
+        crop = g[y0:y1, x0:x1]
+        s = TPL_MAX_SIDE / float(max(crop.shape[:2]))
+        if s < 1.0:
+            crop = cv2.resize(crop, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+        self.tpl = crop.copy()
+        self.tpl_size = (x1 - x0, y1 - y0)
 
-        small = cv2.resize(gray[sy0:sy1, sx0:sx1], None, fx=MATCH_SCALE,
-                           fy=MATCH_SCALE, interpolation=cv2.INTER_AREA)
-        tpl = cv2.resize(self.tpl, None, fx=MATCH_SCALE, fy=MATCH_SCALE,
-                         interpolation=cv2.INTER_AREA)
-        if small.shape[0] < tpl.shape[0] or small.shape[1] < tpl.shape[1]:
-            return self.bbox, 0.0
-        res = cv2.matchTemplate(small, tpl, cv2.TM_CCOEFF_NORMED)
+    def locate(self, frame: np.ndarray) -> tuple[tuple | None, float]:
+        """在上一位置附近找这块物体。返回 (bbox, 相关系数)。"""
+        if self.tpl is None:
+            return None, 0.0
+        g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        x, y, w, h = self.bbox
+        pad_x, pad_y = int(w * SEARCH_PAD_RATIO), int(h * SEARCH_PAD_RATIO)
+        sx0, sy0 = max(0, x - pad_x), max(0, y - pad_y)
+        sx1, sy1 = min(g.shape[1], x + w + pad_x), min(g.shape[0], y + h + pad_y)
+        win = g[sy0:sy1, sx0:sx1]
+        if (win.shape[0] < self.tpl.shape[0] + 1
+                or win.shape[1] < self.tpl.shape[1] + 1):
+            return None, 0.0
+        res = cv2.matchTemplate(win, self.tpl, cv2.TM_CCOEFF_NORMED)
         _, best, _, loc = cv2.minMaxLoc(res)
-        self.score = float(best)
-        if best >= MIN_SCORE:
-            self.bbox = (int(loc[0] / MATCH_SCALE) + sx0,
-                         int(loc[1] / MATCH_SCALE) + sy0, w, h)
-        return self.bbox, float(best)
+        if best < MATCH_MIN:
+            return None, float(best)
+        tw, th = self.tpl_size
+        return (sx0 + loc[0], sy0 + loc[1], tw, th), float(best)
 
 
 class OcclusionSession:
-    """一帧一帧地推：看见 → 记忆；看不见 → 判遮挡 → 决策。"""
-
-    def __init__(self, resolution=(1280, 720), fresh_s: float = 30.0) -> None:
+    def __init__(self, config: str | None = None,
+                 resolution=(1280, 720), fresh_s: float = 30.0,
+                 use_color: bool = True) -> None:
         self.res = tuple(resolution)
+        cfg_path = (Path(config) if config is not None
+                    else _VISION_ROOT / "config" / "desktop.json")
+        self.cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        self.detector = None
+        if use_color and self.cfg.get("colors"):
+            c = dict(self.cfg)
+            c["label"] = {"enabled": False}      # 颜色检测，不走标签路径
+            try:
+                self.detector = Detector(c)
+            except Exception as exc:             # noqa: BLE001
+                print(f"[OCC] 颜色检测不可用：{exc}", flush=True)
+
         self.world = WorldModel(camera_pose=tuple(CAM_POS), table_z=TABLE_Z,
                                 fresh_s=fresh_s)
         self.lock = threading.Lock()
-        self.tracks: dict[str, Track] = {}
+        self.objs: dict[str, Obj] = {}
         self.last_jpeg: bytes | None = None
         self.last_clean: np.ndarray | None = None
         self.last_patches: dict[str, np.ndarray] = {}
         self.last_bbox: dict[str, tuple] = {}
-        # 上次看见这个目标时的整帧灰度图。遮挡发生时要靠它差分出
-        # **障碍物自己的范围** —— 拿目标自己的 bbox 当障碍物是错的，
-        # 那会永远盖住目标，于是永远判"走廊被占"。
         self.clean_gray: dict[str, np.ndarray] = {}
         self.events: deque = deque(maxlen=8)
         self.frames = 0
         self._next_id = 1
+        # 空桌基线：前 BASELINE_FRAMES 帧的逐像素中值
+        self._base_buf: list[np.ndarray] = []
+        self.baseline: np.ndarray | None = None
 
-    # ------------------------------------------------------------ 交互
-    def lock_on(self, u: float, v: float) -> dict:
-        """用户点了画面上的某个点 → 在那里锁定一个目标。"""
-        with self.lock:
-            if self.last_clean is None:
-                return {"ok": False, "error": "还没有画面"}
-            h, w = self.last_clean.shape[:2]
-            u = float(min(max(u, TPL), w - TPL))
-            v = float(min(max(v, TPL), h - TPL))
-            oid = f"block_{self._next_id}"
-            self._next_id += 1
-            self.tracks[oid] = Track(oid, self.last_clean, u, v)
-            self._ev(f"锁定 {oid} @ 画面 ({u:.0f}, {v:.0f})")
-            return {"ok": True, "id": oid}
+    # ------------------------------------------------------------ 事件
+    def _ev(self, text: str) -> None:
+        self.events.appendleft({"t": self.frames, "text": text})
 
     def reset(self) -> dict:
+        """清空所有物体并重新学习空桌。"""
         with self.lock:
-            self.tracks.clear()
+            self.objs.clear()
             self.world.objects.clear()
             self.world.set_obstacles([])
             self.last_patches.clear()
             self.last_bbox.clear()
             self.clean_gray.clear()
             self.events.clear()
+            self._base_buf.clear()
+            self.baseline = None
             self._next_id = 1
-            return {"ok": True}
+            return {"ok": True, "note": "已清空，重新学习空桌"}
 
-    def _ev(self, text: str) -> None:
-        self.events.appendleft({"t": self.frames, "text": text})
+    # ------------------------------------------------------------ 检测
+    def _foreground(self, gray: np.ndarray) -> list[tuple]:
+        """与空桌基线差分，返回新出现的整块区域（任意颜色都能找到）。"""
+        if self.baseline is None:
+            return []
+        d = cv2.absdiff(gray, self.baseline)
+        _, m = cv2.threshold(d, FG_DIFF, 255, cv2.THRESH_BINARY)
+        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8))
+        # 大核闭运算：把一块积木上的高光/阴影/贴纸碎片连成一个整体。
+        # 不做这一步，一个物体会被拆成好几块小框 —— 这正是"框没框住整个物体"的根源。
+        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8))
+        cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        out = []
+        h, w = gray.shape[:2]
+        for c in cnts:
+            area = float(cv2.contourArea(c))
+            if area < FG_MIN_AREA or area > 0.35 * h * w:
+                continue
+            x, y, bw, bh = cv2.boundingRect(c)
+            if not 0.25 <= bw / float(max(bh, 1)) <= 4.0:
+                continue
+            out.append((x, y, bw, bh))
+        return out
+
+    def _color_boxes(self, img: np.ndarray) -> list[tuple[str, tuple]]:
+        """按调色板找积木（有配置才用）。返回 [(稳定ID, 整块外接框)]。"""
+        if self.detector is None:
+            return []
+        try:
+            dets, _ = self.detector.detect(img)
+        except Exception:                        # noqa: BLE001
+            return []
+        return [(d.object_id, tuple(int(v) for v in d.bbox))
+                for d in dets if not d.is_unknown]
+
+    def _update_objects(self, img: np.ndarray, gray: np.ndarray) -> dict[str, tuple]:
+        """把这一帧的检测并进物体表，返回 {id: 当前框}（只列看得见的）。"""
+        seen: dict[str, tuple] = {}
+
+        # ① 颜色物体：ID 稳定，每帧直接更新框
+        for oid, bbox in self._color_boxes(img):
+            o = self.objs.get(oid)
+            if o is None:
+                self.objs[oid] = Obj(oid, img, bbox, "color")
+                self._ev(f"识别到 {oid}（颜色）")
+            else:
+                o.bbox = bbox
+                o.set_template(img)
+            seen[oid] = bbox
+
+        # ② 已有的前景物体：靠模板跟住
+        for oid, o in list(self.objs.items()):
+            if oid in seen or o.source != "fg":
+                continue
+            bbox, _score = o.locate(img)
+            if bbox is not None:
+                o.bbox = bbox
+                seen[oid] = bbox
+
+        # ③ 新出现的前景区域 → 建新物体（框住整块）
+        for bbox in self._foreground(gray):
+            if any(_iou(bbox, b) > 0.25 for b in seen.values()):
+                continue
+            # **盖住已有目标的区域是障碍物，不是新物体。**
+            # 不做这个区分的话，盒子挡住积木时那一大块前景会被当成"新出现的
+            # 物体"建一条记忆；盒子拿走后它又匹配到别处，留下一个幽灵对象，
+            # 页面上会一直挂着一个不存在的东西。
+            if any(_iou(bbox, o.bbox) > 0.25 or _covers(bbox, o.bbox, 0.5)
+                   or _covers(bbox, self.last_bbox.get(oid, o.bbox), 0.5)
+                   for oid, o in list(self.objs.items())):
+                continue
+            oid = f"obj_{self._next_id}"
+            self._next_id += 1
+            self.objs[oid] = Obj(oid, img, bbox, "fg")
+            seen[oid] = bbox
+            self._ev(f"识别到 {oid}（新出现）")
+        return seen
 
     # ------------------------------------------------------------ 主流程
     def frame(self, jpeg: bytes) -> dict:
@@ -228,23 +352,28 @@ class OcclusionSession:
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             self.last_clean = img
 
-            seen: dict[str, dict] = {}
-            for oid, tr in self.tracks.items():
-                bbox, score = tr.match(img)
-                if score >= MIN_SCORE:
-                    seen[oid] = {"bbox": bbox, "score": score}
+            # 学空桌基线：前 1 秒取中值，之后固定不动
+            if self.baseline is None:
+                self._base_buf.append(gray)
+                if len(self._base_buf) >= BASELINE_FRAMES:
+                    self.baseline = np.median(np.stack(self._base_buf), axis=0
+                                              ).astype(np.uint8)
+                    self._base_buf.clear()
+                    self._ev("空桌基线已就绪")
 
-            # ① 看见的 → 刷新记忆（这是唯一会改位置的地方）
-            for oid, info in seen.items():
-                pose = bbox_pose_table(info["bbox"])
+            seen = self._update_objects(img, gray)
+
+            # ① 看见的 → 刷新记忆（唯一会改位置的地方）
+            for oid, bbox in seen.items():
+                pose = bbox_pose_table(bbox)
                 if pose is None:
                     continue
                 was = self.world.objects.get(oid)
                 if was is not None and was.state == OCCLUDED:
                     self._ev(f"{oid} 重新出现，记忆校验：位置一致")
                 self.world.see(oid, pose)
-                self.last_patches[oid] = _patch(gray, info["bbox"])
-                self.last_bbox[oid] = info["bbox"]
+                self.last_patches[oid] = _patch(gray, bbox)
+                self.last_bbox[oid] = bbox
                 self.clean_gray[oid] = cv2.resize(gray, (640, 360),
                                                   interpolation=cv2.INTER_AREA)
                 if was is None:
@@ -253,23 +382,32 @@ class OcclusionSession:
             # ② 看不见的 → 判遮挡（记忆位置一律不动）
             obstacles: list[Box3D] = []
             occluded_now: dict[str, dict] = {}
-            for oid in list(self.tracks):
+            for oid in list(self.objs):
                 if oid in seen or oid not in self.last_bbox:
                     continue
                 bbox = self.last_bbox[oid]
-                p_now = _patch(gray, bbox)
-                p_old = self.last_patches[oid]
-                diff = float(np.mean(np.abs(p_now.astype(np.int16)
-                                           - p_old.astype(np.int16))))
-                # 三证据里的第二条：这片区域被别的东西占了（像素变了）；
-                # 低于阈值说明那里变回空桌面 —— 东西是真被拿走的，不是被挡。
-                reason = "occluded" if diff >= PATCH_DIFF_OCCLUDED else "empty"
+                current_patch = _patch(gray, bbox).astype(np.int16)
+                diff = float(np.mean(np.abs(
+                    current_patch - self.last_patches[oid].astype(np.int16))))
+                # “和目标上次的外观不同”不等于“被挡住”：积木被拿走后，空桌面
+                # 与积木本身的差异同样很大。必须再对照空桌基线，否则会对空位盲抓。
+                if self.baseline is not None:
+                    empty_diff = float(np.mean(np.abs(
+                        current_patch - _patch(self.baseline, bbox).astype(np.int16))))
+                else:
+                    empty_diff = float("inf")
+                if empty_diff <= PATCH_DIFF_EMPTY:
+                    reason = "empty"           # 区域已经恢复成空桌：目标真被拿走
+                elif diff >= PATCH_DIFF_OCCLUDED:
+                    reason = "occluded"        # 区域非空，且内容已不是原来的目标
+                else:
+                    reason = "unchanged"       # 检测漏帧但区域没变化，不能据此盲抓
                 state = self.world.resolve(oid, slot_reason=reason)
                 if state == OCCLUDED:
                     occluded_now[oid] = {"diff": round(diff, 1), "bbox": bbox}
-                    occ_bbox = self._occluder_bbox(gray, oid, bbox)
-                    if occ_bbox is not None:
-                        box = bbox_to_box(occ_bbox)
+                    occ = self._occluder_bbox(gray, oid, bbox)
+                    if occ is not None:
+                        box = bbox_to_box(occ)
                         if box is not None:
                             obstacles.append(box)
 
@@ -299,9 +437,7 @@ class OcclusionSession:
 
         拿目标自己的 bbox 当障碍物是错的 —— 它必然盖住目标，走廊永远判被占，
         系统就变成"什么都不敢抓"。这里用"上次看见时的整帧"做差分，
-        变化最大的连通域才是那个挡上来的东西；它的**底边**才是接触线。
-
-        找不到任何变化连通域 → 那里是空桌面（东西真被拿走了），返回 None。
+        变化最大的连通域才是挡上来的东西；它的**底边**才是接触线。
         """
         prev = self.clean_gray.get(oid)
         if prev is None:
@@ -311,18 +447,16 @@ class OcclusionSession:
         _, m = cv2.threshold(d, 30, 255, cv2.THRESH_BINARY)
         m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
         m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8))
-        n, lab, stats, _ = cv2.connectedComponentsWithStats(m, 8)
+        n, _lab, stats, _ = cv2.connectedComponentsWithStats(m, 8)
         x, y, w, h = bbox
-        cx, cy = (x + w / 2.0) / 2.0, (y + h / 2.0) / 2.0   # 半分辨率坐标
+        cx, cy = (x + w / 2.0) / 2.0, (y + h / 2.0) / 2.0
         best = None
         for i in range(1, n):
             sx, sy, sw, sh, area = stats[i]
             if area < 400:
                 continue
-            inside = sx <= cx <= sx + sw and sy <= cy <= sy + sh
-            if not inside:
+            if not (sx <= cx <= sx + sw and sy <= cy <= sy + sh):
                 continue
-            # 取把目标盖住的最大的那块（障碍物常常和目标连成一片）
             if best is None or area > best[4]:
                 best = (sx, sy, sw, sh, area)
         if best is None:
@@ -335,15 +469,17 @@ class OcclusionSession:
         objs = []
         for oid, o in self.world.objects.items():
             tgt = self.world.target(oid)
+            src = self.objs.get(oid).source if oid in self.objs else "?"
             objs.append({
                 "id": oid,
                 "state": o.state,
                 "visible": oid in seen,
+                "source": src,
                 "pose": [round(v, 3) for v in o.pose] if o.pose else None,
                 "age_s": None if tgt is None else tgt["age_s"],
                 "uncertainty_mm": (None if not tgt or "uncertainty_m" not in tgt
                                    else round(tgt["uncertainty_m"] * 1000)),
-                "score": round(seen.get(oid, {}).get("score", 0.0), 2),
+                "bbox": list(self.last_bbox.get(oid) or []),
                 "diff": occluded_now.get(oid, {}).get("diff"),
             })
         return {"ok": True,
@@ -358,19 +494,20 @@ class OcclusionSession:
                                     "obstacle": d["feasibility"].get("obstacle")}
                               for oid, d in decisions.items()},
                 "obstacles": len(self.world.obstacles),
-                "tracked": len(self.tracks),
+                "baseline_ready": self.baseline is not None,
+                "baseline_seen": len(self._base_buf),
                 "events": list(self.events),
                 "frames": self.frames}
 
     # ------------------------------------------------------------ 标注
     def _annotate(self, img, seen, obstacles) -> np.ndarray:
         out = img.copy()
-        for oid, info in seen.items():
-            x, y, w, h = info["bbox"]
+        for oid, bbox in seen.items():
+            x, y, w, h = bbox
             cv2.rectangle(out, (x, y), (x + w, y + h), (0, 210, 90), 2)
-            cv2.putText(out, f"{oid} {info['score']:.2f}", (x, max(18, y - 6)),
+            cv2.putText(out, oid, (x, max(18, y - 6)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 210, 90), 2, cv2.LINE_AA)
-        # 记忆中的目标：黄色虚线框，表示"我记得它在这儿"
+        # 记忆中的目标：黄色虚线框（我记得它在这儿）
         for oid, o in self.world.objects.items():
             if oid in seen or oid not in self.last_bbox:
                 continue
@@ -392,16 +529,6 @@ class OcclusionSession:
         return out
 
 
-def _patch(gray: np.ndarray, bbox) -> np.ndarray:
-    x, y, w, h = bbox
-    hh, ww = gray.shape[:2]
-    x0, y0 = max(0, x), max(0, y)
-    x1, y1 = min(ww, x + w), min(hh, y + h)
-    if x1 - x0 < 8 or y1 - y0 < 8:
-        return np.zeros((16, 16), np.uint8)
-    return cv2.resize(gray[y0:y1, x0:x1], (16, 16), interpolation=cv2.INTER_AREA)
-
-
 PAGE = """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>遮挡记忆演示</title>
@@ -419,8 +546,6 @@ body{background:var(--bg);color:var(--fg);font:15px/1.6 -apple-system,"Segoe UI"
 .view video{position:absolute;width:1px;height:1px;opacity:0}
 .hud{position:absolute;left:8px;top:8px;font:11px/1.5 ui-monospace,Consolas,monospace;
      color:#cfd6e2;background:#000a;padding:4px 7px;border-radius:5px}
-.tip{position:absolute;left:0;right:0;bottom:0;padding:7px 10px;font-size:12.5px;
-     background:#000a;color:#cfe6ff;text-align:center}
 .msg{margin-top:8px;font-size:13px;color:var(--dim);min-height:20px}
 .msg.bad{color:var(--bad)}.msg.ok{color:var(--ok)}
 .card{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px 14px}
@@ -445,29 +570,29 @@ button{flex:1;padding:14px 10px;border-radius:11px;border:1px solid #33507a;back
 .note{margin-top:10px;font-size:11.5px;color:#6b7280;line-height:1.6}
 </style></head><body>
 
-<div class="hd"><h1>遮挡记忆 · 手机演示</h1><span class="pill" id="st">连接中</span></div>
+<div class="hd"><h1>遮挡记忆 · 自主识别</h1><span class="pill" id="st">连接中</span></div>
 
 <div class="view">
   <video id="v" playsinline muted autoplay></video>
   <img id="shot" alt="实时">
   <div class="hud" id="hud">—</div>
-  <div class="tip" id="tip">点一下画面里的积木，把它锁定</div>
 </div>
 
 <div class="msg" id="msg">正在请求摄像头权限…</div>
 <div id="cards"></div>
-<div class="bar"><button id="clr">清除记忆，重新开始</button></div>
-<div class="note">几何说明：手机没有深度，位置由像素反投影到桌面平面得到，
-相机位姿为演示用的固定假设值（≈ 机器人腕部俯视桌面），不是标定结果。</div>
+<div class="bar"><button id="clr">重新学习空桌</button></div>
+<div class="note">全程不需要点屏幕：开页面时桌面尽量空着，它用前 1 秒记住空桌，
+之后放上去的东西会自动被识别。<br>
+几何说明：手机没有深度，位置由像素反投影到桌面平面得到，相机位姿为演示用的
+固定假设值（≈ 机器人腕部俯视桌面），不是标定结果。</div>
 
 <script>
 const v=document.getElementById('v'), shot=document.getElementById('shot');
 const hud=document.getElementById('hud'), msg=document.getElementById('msg');
 const st=document.getElementById('st'), cards=document.getElementById('cards');
-const tip=document.getElementById('tip');
 const cv=document.createElement('canvas'); cv.width=1280; cv.height=720;
 const cx=cv.getContext('2d');
-let busy=false, frames=0;
+let busy=false;
 
 function drawCover(){
   const sw=v.videoWidth, sh=v.videoHeight; if(!sw||!sh) return false;
@@ -491,25 +616,13 @@ async function pump(){
   finally{ busy=false; }
 }
 
-// 点选：把点击位置换算到 1280×720 的画面坐标
-shot.onclick=async (ev)=>{
-  const r=shot.getBoundingClientRect();
-  const u=(ev.clientX-r.left)/r.width*1280, vv=(ev.clientY-r.top)/r.height*720;
-  try{
-    const j=await (await fetch('/lock',{method:'POST',headers:{'Content-Type':'application/json'},
-                                       body:JSON.stringify({u:u,v:vv})})).json();
-    if(j.ok) setMsg('已锁定 '+j.id+'，现在拿盒子挡上去','ok');
-    else setMsg(j.error||'锁定失败','bad');
-  }catch(e){ setMsg('锁定失败：'+e.message,'bad'); }
-};
-
 const EVID={visible:'看得见',occluded:'被判遮挡',missing:'按丢失处理'};
 function render(j){
-  frames++;
-  st.textContent = !j.objects.length ? '等待点选'
-                 : (j.objects.some(o=>o.state==='occluded')? '遮挡中':'跟踪中');
-  hud.textContent='objects='+j.objects.length+'  obstacles='+j.obstacles+'  frames='+j.frames;
-  tip.style.display = j.tracked? 'none':'block';
+  st.textContent = !j.baseline_ready ? '正在记忆空桌'
+                 : (!j.objects.length ? '等待目标'
+                    : (j.objects.some(o=>o.state==='occluded')? '遮挡中':'跟踪中'));
+  hud.textContent='objects='+j.objects.length+'  obstacles='+j.obstacles
+                 +'  frames='+j.frames+(j.baseline_ready?'':'  base='+j.baseline_seen);
 
   cards.innerHTML = j.objects.map(o=>{
     const ev1=o.pose?1:0, ev2=(o.state==='occluded')?1:0, ev3=(o.age_s!==null&&o.age_s<300)?1:0;
@@ -519,11 +632,12 @@ function render(j){
       }</b> · ${dec.message}</div>` : '';
     return `<div class="card">
       <h3>${o.id}<span class="st ${o.state}">${EVID[o.state]||o.state}</span></h3>
+      <div class="row"><span>来源</span><b>${o.source==='color'?'颜色检测':'新出现的前景'}</b></div>
       <div class="row"><span>记忆位置 (base_link)</span><b>${
         o.pose? o.pose.map(v=>v.toFixed(2)).join(', ') : '—'}</b></div>
       <div class="row"><span>这条记忆多久了</span><b>${o.age_s===null?'—':o.age_s.toFixed(0)+' s'}</b></div>
       <div class="row"><span>位置不确定度</span><b>${o.uncertainty_mm===null?'—':'±'+o.uncertainty_mm+' mm'}</b></div>
-      <div class="row"><span>当前帧</span><b>${o.visible?('匹配 '+o.score.toFixed(2)):(o.diff!==null?'区域变化 '+o.diff:'—')}</b></div>
+      <div class="row"><span>框 (x,y,w×h)</span><b>${o.bbox&&o.bbox.length? o.bbox.join(', ') : '—'}</b></div>
       <div class="ev">
         <span class="${ev1?'on':'off'}">① 有历史位置</span>
         <span class="${ev2?'on':'off'}">② 区域被占</span>
@@ -531,18 +645,21 @@ function render(j){
       </div>
       ${decHtml}
     </div>`;
-  }).join('') || '<div class="card"><div class="row"><span>点一下画面里的积木，先把它锁定</span></div></div>';
+  }).join('') || `<div class="card"><div class="row"><span>${
+      j.baseline_ready? '画面里还没有物体：把积木放上去，会自动识别'
+                      : '正在学习空桌，请让桌面空着（约 1 秒）'}</span></div></div>`;
 
   const occ=j.objects.filter(o=>o.state==='occluded').length;
-  if(!j.tracked) setMsg('点一下画面里的积木，把它锁定');
-  else if(!j.objects.length) setMsg('已锁定，正在等第一帧建立记忆…');
+  if(!j.baseline_ready) setMsg('正在学习空桌，请让桌面空着…');
+  else if(!j.objects.length) setMsg('把积木放上去，会自动识别（不用点屏幕）');
   else if(occ) setMsg('目标被挡住了 —— 记忆位置保持不动，正在用记忆位姿决策','ok');
-  else setMsg('已记忆位置（现在可以拿盒子挡上去）','ok');
+  else setMsg('已识别 '+j.objects.length+' 个物体并记住位置（现在可以拿盒子挡上去）','ok');
 }
 async function loop(){ await pump(); setTimeout(loop, 250); }
 
 document.getElementById('clr').onclick=async()=>{
-  await fetch('/reset',{method:'POST'}); setMsg('记忆已清除，点一下积木重新锁定','');
+  await fetch('/reset',{method:'POST'});
+  setMsg('已清空，请让桌面空着，正在重新学习…','');
 };
 
 (async()=>{
@@ -550,7 +667,7 @@ document.getElementById('clr').onclick=async()=>{
     const stream=await navigator.mediaDevices.getUserMedia({
       video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
     v.srcObject=stream; await v.play();
-    setMsg('摄像头已就绪，点一下画面里的积木'); loop();
+    setMsg('摄像头已就绪，正在学习空桌'); loop();
   }catch(e){
     setMsg('拿不到摄像头：'+e.name+' — '+(e.message||''),'bad');
     if(location.protocol!=='https:') setMsg('必须用 https 打开（当前 '+location.protocol+'）','bad');
@@ -601,10 +718,6 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/frame":
                 self._json(self.session.frame(self._body()))
-            elif path == "/lock":
-                d = json.loads(self._body().decode("utf-8") or "{}")
-                self._json(self.session.lock_on(float(d.get("u", 640)),
-                                                float(d.get("v", 360))))
             elif path == "/reset":
                 self._json(self.session.reset())
             else:
@@ -614,32 +727,37 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description="遮挡记忆演示（手机摄像头，点选目标）")
+    p = argparse.ArgumentParser(description="遮挡记忆演示（手机摄像头，自主识别）")
     p.add_argument("--port", type=int, default=8302)
     p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--config", default=None,
+                   help="视觉配置；默认自动选择仓库里的 vision/config/desktop.json")
     p.add_argument("--res", default="1280x720")
     p.add_argument("--fresh-s", type=float, default=30.0,
                    help="记忆新鲜期：这个时间内允许直接盲抓")
+    p.add_argument("--no-color", action="store_true",
+                   help="不用调色板，只靠空桌差分找新出现的物体")
     args = p.parse_args(argv)
 
     res = tuple(int(v) for v in args.res.lower().split("x"))
     ips = _lan_ips()
     cert, key = ensure_cert(ips)
-    session = OcclusionSession(resolution=res, fresh_s=args.fresh_s)
+    session = OcclusionSession(args.config, resolution=res,
+                               fresh_s=args.fresh_s, use_color=not args.no_color)
     Handler.session = session
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.load_cert_chain(str(cert), str(key))
     httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
 
-    print("=" * 60, flush=True)
+    print("=" * 62, flush=True)
     for ip in ips:
         tag = "  ← 手机连『移动热点』用这个" if ip.startswith("192.168.137.") else ""
         print(f"[OCC] 手机打开  https://{ip}:{args.port}{tag}", flush=True)
     print("[OCC] 首次会提示『连接不是私密连接』→ 高级 → 继续前往", flush=True)
-    print("[OCC] 流程：点一下积木 → 记住位置 → 拿盒子挡住 → 看它还能不能决策",
+    print("[OCC] 开页面时桌面尽量空着 → 放积木（自动识别）→ 拿盒子挡住 → 看决策",
           flush=True)
-    print("=" * 60, flush=True)
+    print("=" * 62, flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
