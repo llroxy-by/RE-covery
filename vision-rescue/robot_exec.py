@@ -126,7 +126,8 @@ class Exec:
         gs = self.r.get_gripper_state("left_gripper")
         out = {"ok": True, "joints": {k: [round(float(v), 4) for v in val] for k, val in js.items()},
                "grip": {"width": round(float(gs.width), 4), "effort": round(float(gs.effort), 2),
-                        "moving": bool(gs.is_moving)}}
+                        "moving": bool(gs.is_moving),
+                        "timestamp_ns": int(getattr(gs, 'timestamp_ns', 0))}}
         if mp is not None:
             p, R = mp
             out["mount"] = [round(float(v), 4) for v in p]
@@ -243,6 +244,28 @@ class Exec:
             out["ok"] = False
         return out
 
+    def cmd_move_checked(self, req):
+        """Plan and execute in one RPC, retaining the same one-use solution."""
+        table = float(req['table_z'])
+        minimum = float(req['min_tip'])
+        delta = float(req.get('max_delta', 40))
+        deviation = float(req.get('max_dev', 5))
+        if not np.all(np.isfinite([table, minimum, delta, deviation])) or not (
+                minimum >= table + .012 and 0 < delta <= 45 and 0 < deviation <= 8):
+            return {'ok': False, 'error': '路径检查参数无效'}
+        plan = self.cmd_ikpath(req)
+        if not plan.get('ok'):
+            return {'ok': False, 'error': '逆解或预演失败', 'plan': plan}
+        if (plan['max_delta_deg'] > delta or plan['max_dev_cm'] > deviation
+                or plan['min_tip_z'] < minimum):
+            self._plans.pop(plan['plan_id'], None)
+            return {'ok': False, 'error': '路径不通过', 'plan': plan}
+        result = self.cmd_execute_plan(dict(req, plan_id=plan['plan_id']))
+        result['plan'] = plan
+        if result.get('err_mm') is None or result['err_mm'] > 3:
+            result['ok'] = False
+        return result
+
     def cmd_grip(self, req):
         width = float(req.get("w", .09))
         velocity = float(req.get("v", .03))
@@ -252,11 +275,53 @@ class Exec:
                 0 <= width <= .12 and 0 < velocity <= .2 and 0 < effort <= 100 and 0 <= settle <= 5):
             return {"ok": False, "error": "夹爪参数超出 SDK 范围"}
         t0 = time.time()
+        adaptive = bool(req.get('wait_until_stopped', False))
+        before = self.r.get_gripper_state('left_gripper') if adaptive else None
+        if adaptive and (before is None or not np.isfinite(float(before.width))):
+            return {'ok': False, 'error': '夹爪反馈不可用，未下发命令'}
         st = self.r.set_gripper_command("left_gripper", width,
                                         velocity_mps=velocity,
                                         effort=effort,
-                                        is_blocking=bool(req.get("blocking", True)))
-        time.sleep(settle)
+                                        is_blocking=False if adaptive else bool(req.get("blocking", True)))
+        if adaptive and st == g.ControlStatus.SUCCESS:
+            timeout = float(req.get('wait_timeout', 5.))
+            if not np.isfinite(timeout) or not .2 <= timeout <= 5:
+                timeout = 5.
+            started = time.monotonic()
+            baseline_stamp = getattr(before, 'timestamp_ns', None)
+            baseline_width = float(before.width)
+            stable = 0
+            previous = None
+            previous_stamp = baseline_stamp
+            activity = False
+            while time.monotonic() - started < timeout:
+                gs = self.r.get_gripper_state('left_gripper')
+                if gs is None:
+                    return {'ok': False, 'error': '夹爪反馈丢失，未继续后续动作'}
+                measured = float(gs.width)
+                if not np.isfinite(measured):
+                    return {'ok': False, 'error': '夹爪宽度反馈无效'}
+                stamp = getattr(gs, 'timestamp_ns', None)
+                activity |= bool(gs.is_moving) or abs(measured - baseline_width) > .0005
+                if baseline_stamp is not None and stamp is not None:
+                    fresh = stamp > baseline_stamp and (activity or abs(width - baseline_width) < .0005)
+                    if previous_stamp is not None and stamp <= previous_stamp:
+                        time.sleep(.04)
+                        continue
+                    previous_stamp = stamp
+                else:
+                    fresh = activity or (abs(width - baseline_width) < .0005 and time.monotonic() - started >= .12)
+                stable = stable + 1 if (fresh and not gs.is_moving and previous is not None
+                                              and abs(measured - previous) < .0005) else 0
+                previous = measured
+                if stable >= 3:
+                    break
+                time.sleep(.04)
+            else:
+                return {'ok': False, 'error': '等待夹爪停稳超时，未继续后续动作',
+                        'width': float(gs.width), 'moving': bool(gs.is_moving)}
+        elif not adaptive:
+            time.sleep(settle)
         gs = self.r.get_gripper_state("left_gripper")
         return {"ok": st == g.ControlStatus.SUCCESS, "status": str(st).replace("ControlStatus.", ""),
                 "width": round(float(gs.width), 4), "effort": round(float(gs.effort), 2),
@@ -416,6 +481,71 @@ class Exec:
                 "camera_pose": [float(v) for v in pose] if st == g.MotionStatus.SUCCESS and pose is not None else None,
                 "camera_info": intrinsic,
                 "K": [float(v) for v in intrinsic["K"]] if isinstance(intrinsic, dict) and "K" in intrinsic else None}
+
+    def cmd_scene_regions(self, req):
+        """Fuse wrist depth into head-image regions; read-only, no demo poses."""
+        self.ensure_sensor()
+        regions = req['regions']
+        if not isinstance(regions, list) or not 1 <= len(regions) <= 12:
+            raise ValueError('区域数量无效')
+        table = float(req['table_z'])
+        if not np.isfinite(table) or not .6 < table < .8:
+            raise ValueError('桌面高度无效')
+        intrinsic = self.r.get_camera_intrinsic(S.HEAD_LEFT_CAMERA)
+        if intrinsic.get('distortion_model') != 'plumb_bob':
+            raise ValueError('当前区域融合只支持已核对的头部 plumb_bob 图像')
+        js = self.m.get_chain_joint_state()
+        status, pose = self.m.forward_kinematics('head_left_camera_color_optical_frame', 'base_link', js)
+        if status != g.MotionStatus.SUCCESS or pose is None or len(pose) != 7:
+            raise RuntimeError('头部相机位姿不可用')
+        ext = self.r.get_sensor_extrinsic(S.LEFT_ARM_DEPTH_CAMERA, 'base_link')[0][:7]
+        if len(ext) != 7 or not np.all(np.isfinite(ext)):
+            raise RuntimeError('深度相机位姿无效')
+        frames = []
+        for _ in range(4):
+            data = self._depth()
+            w, h = int(data['width']), int(data['height'])
+            frames.append(np.frombuffer(bytes(data['data']), dtype='<u2').reshape(h, w).astype(float) / float(data['depth_scale']))
+        stack = np.stack(frames)
+        stack[stack <= 0] = np.nan
+        depth = np.nan_to_num(np.nanmedian(stack, axis=0), nan=0.)
+        valid = (depth > .06) & (depth < 1.)
+        v, u = np.nonzero(valid)
+        z = depth[valid]
+        Kd = self.intrinsics()
+        pc = np.stack([(u - Kd[2]) * z / Kd[0], (v - Kd[5]) * z / Kd[4], z], axis=1)
+        points = pc @ q2R(ext[3:]).T + np.asarray(ext[:3])
+        head_points = (points - np.asarray(pose[:3])) @ q2R(pose[3:])
+        front = head_points[:, 2] > .05
+        points, head_points = points[front], head_points[front]
+        K = np.asarray(intrinsic['K'], dtype=float).reshape(3, 3)
+        pixels, _ = cv2.projectPoints(head_points, np.zeros(3), np.zeros(3), K,
+                                      np.asarray(intrinsic.get('D', [0.] * 5), dtype=float))
+        pixels = pixels.reshape(-1, 2)
+        results = []
+        for region in regions:
+            x0, y0, x1, y1 = [float(n) for n in region['box']]
+            if not np.all(np.isfinite([x0, y0, x1, y1])) or not (0 <= x0 < x1 <= 1280 and 0 <= y0 < y1 <= 960):
+                raise ValueError('图像区域无效')
+            mask = ((pixels[:, 0] >= x0) & (pixels[:, 0] <= x1) &
+                    (pixels[:, 1] >= y0) & (pixels[:, 1] <= y1))
+            selected = points[mask]
+            low = float(region.get('min_height', .006))
+            high = float(region.get('max_height', .35))
+            if not np.all(np.isfinite([low, high])) or not 0 <= low < high <= .35:
+                raise ValueError('物体高度范围无效')
+            obj = selected[(selected[:, 2] > table + low) & (selected[:, 2] < table + high)]
+            out = {'name': region['name'], 'n': int(len(obj)), 'total': int(len(selected)),
+                   'ok': bool(len(obj) >= 60)}
+            if len(obj) >= 60:
+                out.update({'center': np.median(obj, axis=0).round(4).tolist(),
+                            'top_z': round(float(np.percentile(obj[:, 2], 95)), 4),
+                            'z_p10': round(float(np.percentile(obj[:, 2], 10)), 4),
+                            'xy_p10': np.percentile(obj[:, :2], 10, axis=0).round(4).tolist(),
+                            'xy_p90': np.percentile(obj[:, :2], 90, axis=0).round(4).tolist()})
+            results.append(out)
+        return {'ok': True, 'regions': results, 'table_z': table,
+                'camera_pose': [float(v) for v in pose], 'observed_at': time.time()}
 
     def cmd_target(self, req):
         """在可达区内找最高的一个物体：1cm 高度图 -> 平滑 -> 取峰 -> 加权重心。
@@ -915,7 +1045,7 @@ def main():
                 break
             try:
                 t0 = time.time()
-                if cmd in {"cart", "joints", "grip", "base", "execute_plan"} and not globals().get("ALLOW_MOTION", False):
+                if cmd in {"cart", "joints", "grip", "base", "execute_plan", "move_checked"} and not globals().get("ALLOW_MOTION", False):
                     raise RuntimeError("执行器当前为只读模式")
                 if cmd == "state":
                     out = ex.cmd_state(req)
@@ -923,6 +1053,8 @@ def main():
                     out = ex.cmd_cart(req)
                 elif cmd == "execute_plan":
                     out = ex.cmd_execute_plan(req)
+                elif cmd == "move_checked":
+                    out = ex.cmd_move_checked(req)
                 elif cmd == "joints":
                     out = ex.cmd_joints(req)
                 elif cmd == "grip":
@@ -945,6 +1077,8 @@ def main():
                     out = ex.cmd_depthjpeg(req)
                 elif cmd == "headjpeg":
                     out = ex.cmd_headjpeg(req)
+                elif cmd == "scene_regions":
+                    out = ex.cmd_scene_regions(req)
                 elif cmd == "overview":
                     out = ex.cmd_overview(req)
                 elif cmd == "base":

@@ -61,8 +61,8 @@ def connect(allow_motion=False):
         raise RuntimeError('执行器启动失败或超时')
 
 
-def call(p, obj, timeout=40):
-    motion = {'cart', 'joints', 'execute_plan', 'grip', 'base'}
+def call(p, obj, timeout=60):
+    motion = {'cart', 'joints', 'execute_plan', 'move_checked', 'grip', 'base'}
     if obj.get('cmd') in motion and not p._allow_motion:
         return 0, {'ok': False, 'error': '当前连接只读'}
     p._seq += 1

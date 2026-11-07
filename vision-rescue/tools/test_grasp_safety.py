@@ -168,7 +168,7 @@ class SafetyTests(unittest.TestCase):
     def test_readonly_transport_rejects_every_motion_command(self):
         import exec_transport
         p = types.SimpleNamespace(_allow_motion=False)
-        for cmd in ('base', 'cart', 'joints', 'grip', 'execute_plan'):
+        for cmd in ('base', 'cart', 'joints', 'grip', 'execute_plan', 'move_checked'):
             self.assertFalse(exec_transport.call(p, {'cmd': cmd})[1]['ok'])
 
     def test_preview_get_cannot_trigger_motion(self):
@@ -201,6 +201,90 @@ class SafetyTests(unittest.TestCase):
             result = session.perform({'action': 'move', 'xyz': [.7, .1, 1.],
                                       'table_z': .7, 'min_tip': .8})
         self.assertFalse(result['ok'])
+
+    def test_compound_move_uses_single_ik_and_same_checked_solution(self):
+        with patch.dict(sys.modules, {'galbot_sdk': sdk, 'galbot_sdk.g1': gm}):
+            result = self.ex.cmd_move_checked({'x': .7, 'y': .1, 'z': 1.,
+                                               'table_z': .7, 'min_tip': .8, 'speed': .06})
+        self.assertTrue(result['ok'])
+        self.assertEqual(self.ex.m.ik_calls, 1)
+        self.assertEqual(self.sent, [[.01] * 7])
+
+    def test_compound_move_rejects_geometry_without_execution(self):
+        result = self.ex.cmd_move_checked({'x': .7, 'y': .1, 'z': 1.,
+                                          'table_z': .7, 'min_tip': .85})
+        self.assertFalse(result['ok'])
+        self.assertFalse(self.sent)
+        self.assertFalse(self.ex._plans)
+
+    def test_fast_transport_profile_preserves_explicit_speed_override(self):
+        import pickplace_session
+        session = pickplace_session.Session(None, 'fast')
+        with patch.object(session, 'request', return_value={'ok': True, 'err_mm': 0.}) as request:
+            move = {'action': 'move', 'xyz': [.7, .1, 1.], 'table_z': .7,
+                    'min_tip': .8, 'phase': 'transport'}
+            self.assertTrue(session.perform(move)['ok'])
+            self.assertEqual(request.call_args.args[0]['cmd'], 'move_checked')
+            self.assertEqual(request.call_args.args[0]['speed'], .12)
+            session.perform(dict(move, speed=.04))
+            self.assertEqual(request.call_args.args[0]['speed'], .04)
+
+    def test_adaptive_gripper_waits_for_activity_and_fresh_stable_feedback(self):
+        def reading(stamp, width, moving=False):
+            return types.SimpleNamespace(timestamp_ns=stamp, width=width,
+                                         is_moving=moving, effort=9.54)
+        sequence = iter([reading(1, .07), reading(2, .07), reading(3, .05, True),
+                         reading(4, .023), reading(5, .023), reading(6, .023), reading(7, .023)])
+        self.ex.r.get_gripper_state = lambda name: next(sequence, reading(8, .023))
+        self.ex.r.set_gripper_command = lambda *args, **kwargs: 'SUCCESS'
+        clock = [0.]
+        def sleep(t):
+            clock[0] += t
+        with patch.object(executor.time, 'monotonic', side_effect=lambda: clock[0]), \
+             patch.object(executor.time, 'sleep', side_effect=sleep):
+            result = self.ex.cmd_grip({'w': .01, 'wait_until_stopped': True})
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['width'], .023)
+        self.assertLess(clock[0], .5)
+
+    def test_adaptive_gripper_stale_feedback_times_out(self):
+        state = types.SimpleNamespace(timestamp_ns=1, width=.07, is_moving=False, effort=9.54)
+        self.ex.r.get_gripper_state = lambda name: state
+        self.ex.r.set_gripper_command = lambda *args, **kwargs: 'SUCCESS'
+        clock = [0.]
+        def sleep(t):
+            clock[0] += t
+        with patch.object(executor.time, 'monotonic', side_effect=lambda: clock[0]), \
+             patch.object(executor.time, 'sleep', side_effect=sleep):
+            result = self.ex.cmd_grip({'w': .01, 'wait_until_stopped': True, 'wait_timeout': .2})
+        self.assertFalse(result['ok'])
+
+    def test_compact_batch_output_avoids_repeating_all_step_payloads(self):
+        import pickplace_session
+        result = pickplace_session.brief({'ok': True, 'results': [
+            {'ok': True, 'joints': {'left_arm': [0.] * 7}, 'plan': {'delta_deg': [0.] * 7}},
+            {'ok': True, 'mount': [.7, .1, 1.]}]})
+        self.assertEqual(result['completed'], 2)
+        self.assertNotIn('results', result)
+        self.assertEqual(result['last']['mount'], [.7, .1, 1.])
+
+    def test_gripper_profile_requests_feedback_wait_instead_of_fixed_sleep(self):
+        import pickplace_session
+        session = pickplace_session.Session(None, 'fast')
+        with patch.object(session, 'request', return_value={'ok': True}) as request:
+            session.perform({'cmd': 'grip', 'w': .01})
+        sent = request.call_args.args[0]
+        self.assertTrue(sent['wait_until_stopped'])
+        self.assertEqual(sent['v'], .07)
+
+    def test_batch_timing_records_controller_gaps(self):
+        import pickplace_session
+        session = pickplace_session.Session(None)
+        with patch.object(session, 'request', return_value={'ok': True}), \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = session.perform({'action': 'batch', 'steps': [{'cmd': 'state'}, {'cmd': 'state'}]})
+        self.assertEqual(len(result['timing']), 2)
+        self.assertLess(result['timing'][1]['gap_ms'], 100.)
 
 
 if __name__ == '__main__':
