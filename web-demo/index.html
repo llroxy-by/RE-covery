@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#151619"><title>RE-covery · 实体场景复位控制台</title>
+<style>
+:root{--bg:#151619;--panel:#1c1e21;--line:#2c2f33;--line-soft:#26282c;--text:#e9e8e4;--muted:#9b9a95;--faint:#6e6e69;--mint:#b6e88a;--amber:#efb96a;--red:#ff8a84;--blue:#8cb8e6;--violet:#c2a8e8;--radius:10px}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:20px}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;-webkit-font-smoothing:antialiased}
+button,select{font:inherit}button,a,select{-webkit-tap-highlight-color:transparent}button{cursor:pointer}button:disabled{opacity:.4;cursor:not-allowed}button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
+button{color:var(--text);background:#22252a;border:1px solid var(--line);border-radius:7px;padding:9px 14px;transition:background .15s,border-color .15s}button:hover:not(:disabled){background:#2c3036;border-color:#4a4f57}
+.primary{background:var(--mint);border-color:var(--mint);color:#1b2413;font-weight:600}.primary:hover:not(:disabled){background:#c8f6a0;border-color:#c8f6a0}.quiet{background:transparent;border-color:transparent}.quiet:hover:not(:disabled){background:#23262b}.tiny{font-size:12px;padding:5px 10px}
+.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.eyebrow{font:11px/1.5 ui-monospace,monospace;letter-spacing:1.5px;color:var(--faint)}.muted{color:var(--muted)}.mint{color:var(--mint)}.amber{color:var(--amber)}.red{color:var(--red)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:2px;background:currentColor;margin-right:7px}.pill{display:inline-flex;align-items:center;white-space:nowrap;font-size:11px;padding:3px 9px;border:1px solid currentColor;border-radius:5px;line-height:1.5}
+.shell{display:grid;grid-template-columns:200px 1fr;min-height:100vh}.side{border-right:1px solid var(--line);padding:28px 18px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;background:#17181b}
+.brand{font-size:22px;font-weight:700;letter-spacing:-.6px;white-space:nowrap}.brand b{color:var(--mint)}.brandmark{display:inline-block;transform:rotate(-38deg);font-weight:500;margin-right:7px;color:var(--mint)}.side small{color:var(--muted);font-size:11px;letter-spacing:1px;margin-left:26px}
+.nav{display:grid;gap:4px;margin-top:36px}.nav a{color:#9aa0a6;text-decoration:none;padding:10px 12px;border-radius:7px;display:flex;gap:12px;font-size:14px}.nav a.active,.nav a:hover{color:var(--mint);background:#b6e88a0d}.nav a.active{box-shadow:inset 2px 0 var(--mint)}.nav i{font-style:normal;width:18px}
+.sidefoot{margin-top:auto;border-top:1px solid var(--line);padding-top:18px;font-size:12px}.avatar{width:28px;height:28px;display:inline-grid;place-items:center;border-radius:50%;background:#2a2d24;color:var(--mint);margin-right:8px}
+.main{padding:0 28px 20px;max-width:1720px;width:100%;margin:auto}.topbar{height:44px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);gap:15px}.topbar>div{display:flex;gap:12px;align-items:center}.topbar .crumb{color:#7a7f85;font-size:13px}.topbar .crumb span{color:#d6d9dc}.topbar .tag{background:#262a22;color:var(--mint);border-radius:4px;font:11px ui-monospace,monospace;padding:4px 9px;letter-spacing:.5px}
+.hero{display:flex;align-items:center;justify-content:space-between;padding:10px 0 8px;gap:16px}h1{font-size:20px;letter-spacing:-.4px;margin:0;line-height:1.35;font-weight:650}.hero p{color:var(--muted);font-size:12px;margin:2px 0 0}.actions{display:flex;gap:8px;flex-wrap:wrap}
+/* 首屏：判定卡 */
+.verify{border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:var(--radius);background:var(--panel)}.verify.ready{border-left-color:var(--mint)}
+.verdictband{display:flex;justify-content:space-between;gap:20px;padding:12px 18px;align-items:center}.verdict-main{min-width:0}.verdict-row{display:flex;align-items:center;gap:18px;margin-top:6px}
+.verdict{font:28px/1 ui-monospace,monospace;letter-spacing:1px;display:flex;align-items:center;gap:12px;font-weight:600}.verdict:before{content:'';width:13px;height:13px;border-radius:3px;background:currentColor;flex-shrink:0}
+.verdict-word{font-size:16px;font-weight:600;letter-spacing:.5px}.verdict-meta p{color:var(--muted);font-size:13px;margin:2px 0 0}
+.verdict-actions{display:flex;flex-direction:column;gap:8px;flex-shrink:0;min-width:180px}.verdict-foot{display:flex;align-items:center;gap:16px;border-top:1px solid var(--line-soft);padding:9px 16px;flex-wrap:wrap}
+.checks{display:flex;gap:8px;flex-wrap:wrap;flex:1}.checks div{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);border:1px solid var(--line-soft);border-radius:6px;padding:4px 10px}.checks div .mint{color:var(--mint)}.checks div .amber{color:var(--amber)}
+.decision{display:flex;align-items:center;gap:10px;font-size:12px}.decision strong{color:var(--amber);font-weight:600;white-space:nowrap}.decision span{color:var(--muted)}
+/* 面板与场景对照 */
+.panel{border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}.panelhead{display:flex;align-items:center;justify-content:space-between;padding:9px 16px;border-bottom:1px solid var(--line-soft);gap:10px}h2{font-size:15px;margin:0;font-weight:600}h2 span{color:var(--muted);font-size:12px;font-weight:400;margin-left:8px;letter-spacing:.5px}
+.scene-toolbar{padding:7px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;border-bottom:1px solid var(--line-soft)}.switch{display:flex;background:#121316;padding:2px;border:1px solid var(--line-soft);border-radius:6px}.switch button{font-size:12px;padding:4px 11px;border:0;background:transparent;color:var(--muted)}.switch button.on{background:#2b3326;color:var(--mint)}
+.scenes{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}.scene{background:#15171a;position:relative;padding:12px 14px 0}.scenetitle{display:flex;justify-content:space-between;align-items:baseline;padding:0 6px;margin-bottom:4px}.scenetitle strong{font-size:15px;font-weight:600}.scenetitle span{font-size:11px;color:var(--muted)}.scene svg{display:block;width:100%;height:auto;max-height:250px}.scene-footer{position:absolute;bottom:10px;left:18px;right:18px;display:flex;justify-content:space-between;color:#6f7a80;font:10px ui-monospace,monospace}
+.legend{display:flex;gap:20px;padding:8px 18px;font-size:12px;flex-wrap:wrap}.legend span:before{content:'';display:inline-block;width:7px;height:7px;border-radius:2px;background:currentColor;margin-right:6px}.scene-note{font-size:12px;color:var(--muted);border-top:1px solid var(--line-soft);padding:8px 18px;display:flex;justify-content:space-between;gap:10px}
+/* 差异表 */
+.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;text-align:left;font-size:13px;white-space:nowrap}th{font-weight:500;font-size:12px;color:var(--muted);background:#191b1e}th,td{padding:11px 18px;border-bottom:1px solid var(--line-soft)}tbody tr:last-child td{border-bottom:0}tbody tr{cursor:pointer}tbody tr:hover,tbody tr.selected{background:#b6e88a08}.object-name{font-weight:500;color:#e6e9ec}.type{font-size:12px;display:inline-block;min-width:42px}.type.misplaced{color:var(--amber)}.type.missing{color:var(--red)}.type.occluded{color:var(--blue)}.type.added{color:var(--violet)}.type.ok{color:var(--mint)}
+/* 复位计划 */
+.planbody{padding:16px 18px}.steps{list-style:none;padding:0;margin:14px 0 0}.steps li{display:flex;gap:12px;position:relative;padding-bottom:16px;font-size:13px}.steps li:last-child{padding-bottom:0}.steps li:not(:last-child):before{content:'';position:absolute;top:24px;left:11px;bottom:3px;border-left:1px solid #33363b}.stepnum{width:23px;height:23px;border:1px solid #3a3e44;display:grid;place-items:center;border-radius:50%;font:11px ui-monospace,monospace;flex-shrink:0;color:var(--muted)}.steps strong{display:block;font-weight:550}.steps small{color:var(--muted);font-size:12px}.steps li.done .stepnum{color:var(--mint);border-color:#b6e88a55;background:#b6e88a10}.steps li.current .stepnum{color:var(--amber);border-color:var(--amber)}.plan-bottom{border-top:1px solid var(--line-soft);padding:13px 18px}.plan-bottom button{width:100%}.kv{display:flex;justify-content:space-between;font-size:12px}.bar{height:4px;background:#2c2f34;border-radius:2px;margin-top:8px;overflow:hidden}.bar div{height:100%;background:var(--mint);border-radius:2px;transition:width .3s}
+/* 次要信息：统计与机器人 */
+.secondary{display:grid;grid-template-columns:1fr 1fr;gap:16px}.stats,.robotstrip{border-top:1px solid var(--line-soft);padding:12px 0}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.stat label{font-size:11px;color:var(--faint);display:block;margin-bottom:2px}.stat b{font-size:15px;font-weight:600}.stat b small{font-size:11px;color:var(--muted);font-weight:400;margin-left:3px}.stat span{display:block;font-size:11px;color:var(--muted);margin-top:1px}.robotstrip{display:flex;flex-direction:column;gap:10px;justify-content:center}.robotstrip .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px}.robotstrip .row .pill{font-size:11px}
+/* 日志与记录 */
+.logs{padding:12px 18px;max-height:180px;overflow:auto;min-height:120px}.log{display:grid;grid-template-columns:66px 52px 1fr;gap:10px;font:11px/1.9 ui-monospace,monospace;padding:3px 0}.log time{color:#7a8086}.log .level{color:var(--mint)}.log .WARN{color:var(--amber)}.log .STOP{color:var(--red)}.bottom{margin-top:16px}.history-list{display:flex;gap:20px;padding:14px 18px;font-size:12px;justify-content:space-between;flex-wrap:wrap}.history-list span{color:var(--muted);margin-right:10px}footer{display:flex;justify-content:space-between;color:#6f7378;font:11px ui-monospace,monospace;padding-top:18px;gap:10px}
+.dialog{color:var(--text);background:#1b1e22;border:1px solid #3a3f46;border-radius:12px;width:min(520px,calc(100% - 30px));padding:24px}.dialog::backdrop{background:#05070acc;backdrop-filter:blur(4px)}.dialog h2{font-size:20px;margin:8px 0 10px}.dialog p{color:var(--muted);font-size:13px}.dialog .row{border:1px solid var(--line);padding:13px;margin-top:10px;border-radius:8px;display:flex;justify-content:space-between;gap:10px;align-items:center}.dialog .row strong{font-size:13px}.dialog .row small{display:block;color:var(--muted);font-size:11px;margin-top:3px}.dialog .row button{font-size:12px;white-space:nowrap}.dialog .actions{margin-top:20px;justify-content:flex-end}.dialog ol{font-size:13px;color:var(--muted);padding-left:20px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,16px);background:#e6f2d6;color:#1c2611;padding:11px 22px;border-radius:8px;font-size:13px;opacity:0;pointer-events:none;transition:.2s;z-index:50;max-width:90vw}.toast.show{opacity:1;transform:translate(-50%,0)}select{background:#15171a;color:#c3c9ce;border:1px solid var(--line);border-radius:6px;font-size:12px;padding:7px;max-width:200px}.scene [data-obj]{cursor:pointer}.scene [data-obj]:focus{outline:none;filter:brightness(1.4)}.scene [data-obj]:hover{filter:brightness(1.25)}
+/* 状态变化的单处动效 */
+@keyframes verdictPop{0%{transform:scale(.94);opacity:.4}60%{transform:scale(1.03)}100%{transform:scale(1);opacity:1}}.verify.ready .verdict{animation:verdictPop .5s cubic-bezier(.2,.8,.2,1)}
+@media(min-width:1600px){.main{padding:0 36px 24px}}
+@media(max-width:1180px){.shell{grid-template-columns:72px 1fr}.side{padding:26px 12px}.brand{font-size:0}.brandmark{font-size:28px;margin-left:8px}.side small,.nav .label,.sidefoot{display:none}.nav a{padding:12px;justify-content:center}.nav{margin-top:32px}.nav i{font-size:18px}.main{padding:0 20px 20px}.stats{grid-template-columns:1fr 1fr}.secondary{grid-template-columns:1fr}}
+@media(max-width:900px){.scenes{grid-template-columns:1fr}.secondary{grid-template-columns:1fr}.verdictband{flex-direction:column;align-items:flex-start}.verdict-actions{flex-direction:row}.topbar .crumb{display:none}.stats{grid-template-columns:1fr 1fr}}
+@media(max-width:600px){.shell{display:block}.side{height:56px;position:relative;padding:0 15px;flex-direction:row;align-items:center;border-bottom:1px solid var(--line);border-right:0;justify-content:space-between}.brand{font-size:19px}.brandmark{font-size:20px;margin-left:0}.nav{margin:0;display:flex;gap:0}.nav a{padding:8px}.nav i{font-size:14px}.nav a.active{box-shadow:none}.main{padding:0 14px 18px}.topbar{height:52px}.hero{padding:18px 0 14px;display:block}.hero .actions{max-width:none;margin-top:12px}.verdict{font-size:24px}.verdict-foot{flex-direction:column;align-items:flex-start}.stats{grid-template-columns:1fr}.scene svg{max-height:240px}.log{grid-template-columns:55px 40px 1fr;gap:6px}.history-list{gap:8px}footer{flex-direction:column}.dialog{padding:18px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+#decisionPanel[hidden]{display:none}
+/* 用户指定的字体层级 */
+body{font-size:18px;font-weight:400}
+h1{font-size:40px;font-weight:700;line-height:1.25}
+.hero h1{font-size:56px;font-weight:800;line-height:1.2;overflow-wrap:anywhere}
+h2,.dialog h2{font-size:30px;font-weight:600;line-height:1.35}
+h3,.scenetitle strong{font-size:24px;font-weight:500;line-height:1.4}
+.hero p,.verdict-meta p,.decision,.scene-note,table,.steps li,.robotstrip .row,.history-list,.dialog p,.dialog ol,.dialog .row strong,.toast{font-size:18px;font-weight:400}
+label,small,.eyebrow,.pill,.nav a,.sidefoot,.side small,.topbar .crumb,.topbar .tag,.tiny,h2 span,.checks div,.scene-toolbar,.switch button,.scenetitle span,.scene-footer,.legend,th,.type,.steps small,.stepnum,.kv,.stat label,.stat span,.stat b small,.robotstrip .row .pill,.log,footer,.dialog .row small,.dialog .row button,select{font-size:16px;font-weight:400}
+.verdict{font-size:40px;font-weight:700;line-height:1.2}
+.verdict-word,.stat b{font-size:24px;font-weight:500}
+.hero{flex-wrap:wrap;padding:28px 0 24px;gap:20px}
+.hero>div:first-child{flex:1 1 520px;min-width:0}
+.topbar{height:auto;min-height:64px;flex-wrap:wrap;padding:10px 0}
+.panelhead,.scene-toolbar,.scenetitle,.scene-note{flex-wrap:wrap}
+.panelhead{padding:16px}
+.verdict-row{flex-wrap:wrap}
+.stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+.secondary{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.main,.panel,.scene,.stat,.robotstrip{min-width:0}
+.log{grid-template-columns:86px 64px minmax(0,1fr);overflow-wrap:anywhere}
+.dialog{width:min(680px,calc(100% - 30px));max-height:90vh;overflow:auto}
+.dialog .row{flex-wrap:wrap}
+.steps .stepnum{width:28px;height:28px}
+.scene-footer{position:static;padding:8px 0;gap:10px;flex-wrap:wrap}
+select{max-width:100%}
+@media(max-width:1180px){.secondary{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){
+.hero>div:first-child{flex-basis:auto}
+.hero h1{font-size:56px}
+.topbar>div{flex-wrap:wrap}
+.verdict-actions{flex-wrap:wrap;min-width:0;width:100%}
+.stats{grid-template-columns:minmax(0,1fr)}
+.log{grid-template-columns:76px minmax(0,1fr)}
+.log>span:last-child{grid-column:1/-1}
+}
+
+/* 亮色数码实体按键 */
+button,.nav a{
+--key-top:#b6f6ef;--key-face:#66d9ce;--key-edge:#277b80;
+position:relative;color:#102c35;
+background:linear-gradient(155deg,var(--key-top) 0%,var(--key-face) 78%);
+border:1px solid #ffffffa6;border-bottom-color:var(--key-edge);
+border-radius:9px;
+box-shadow:inset 2px 2px 0 #ffffff80,inset -2px -2px 0 #173b4c30,0 5px 0 var(--key-edge),0 8px 12px #0005;
+text-shadow:0 1px 0 #ffffff55;
+transition:transform .12s,box-shadow .12s,filter .12s;
+font-weight:600;
+}
+button:hover:not(:disabled),.nav a:hover{
+color:#102c35;background:linear-gradient(155deg,var(--key-top),var(--key-face));
+border-color:#ffffffe0;filter:brightness(1.08);transform:translateY(-1px);
+box-shadow:inset 2px 2px 0 #ffffffa0,inset -2px -2px 0 #173b4c30,0 6px 0 var(--key-edge),0 10px 16px #0005;
+}
+button:active:not(:disabled),.nav a:active{
+transform:translateY(4px);filter:brightness(.98);
+box-shadow:inset 1px 1px 0 #ffffff70,inset -1px -1px 0 #173b4c30,0 1px 0 var(--key-edge),0 3px 5px #0004;
+}
+button.primary,#generateBtn{
+--key-top:#e5ff96;--key-face:#b3ed42;--key-edge:#567e24;color:#243512;
+}
+#runBtn{--key-top:#aaffec;--key-face:#46ddaa;--key-edge:#247d60;color:#11392c}
+#resetBtn{--key-top:#ffe3a5;--key-face:#ffba60;--key-edge:#a66526;color:#513313}
+#decisionBtn{--key-top:#ffe9a2;--key-face:#f8c660;--key-edge:#9b7026;color:#48330e}
+#stopBtn{--key-top:#ffc7cc;--key-face:#ff8f9d;--key-edge:#a6465b;color:#622436!important}
+#helpBtn,#exportBtn{--key-top:#ded0ff;--key-face:#b59aef;--key-edge:#6a4ca1;color:#362051}
+button:disabled{
+opacity:1;filter:saturate(.18);color:#71817a;
+background:linear-gradient(155deg,#414943,#303c33);
+border-color:#66715b;box-shadow:inset 1px 1px 0 #ffffff15,0 3px 0 #1b241e;
+text-shadow:none;transform:none;
+}
+.actions,.verdict-actions{gap:14px;padding-bottom:5px}
+.nav{gap:14px}
+.nav a{padding:13px 12px;isolation:isolate}
+.nav a:nth-child(1){--key-top:#e9ffac;--key-face:#b9e96b;--key-edge:#63812f}
+.nav a:nth-child(2){--key-top:#b4f4ff;--key-face:#77d2ee;--key-edge:#377eaa}
+.nav a:nth-child(3){--key-top:#e5d1ff;--key-face:#bfa1ef;--key-edge:#7854aa}
+.nav a:nth-child(4){--key-top:#ffe6ae;--key-face:#f6bd70;--key-edge:#a16a35}
+.nav a.active{color:#1c3511;outline:2px solid #d9ff98;outline-offset:3px;box-shadow:inset 2px 2px 0 #fff9,inset -2px -2px 0 #173b4c30,0 5px 0 var(--key-edge),0 0 18px #b6e88a20}
+.nav i{background:#ffffff3d;border:1px solid #ffffff65;border-radius:4px;width:24px;min-width:24px;text-align:center;color:inherit}
+.switch{gap:8px;padding:6px 6px 10px}
+.switch button{color:#183c44;background:linear-gradient(155deg,var(--key-top),var(--key-face))}
+.switch button.on{--key-top:#e9ffac;--key-face:#b9ed60;--key-edge:#648b2e;color:#243b10}
+.dialog .actions{gap:14px}
+@media(prefers-reduced-motion:reduce){button,.nav a{transition:none}}
+
+/* 高饱和像素数码按键 */
+button,.nav a{
+--key-top:#a6ffff;--key-face:#00f5eb;--key-edge:#008b9b;
+border-radius:0;border:2px solid #112c38;
+background:linear-gradient(to bottom,var(--key-top) 0 5px,var(--key-face) 5px calc(100% - 5px),var(--key-edge) calc(100% - 5px));
+box-shadow:inset 4px 0 0 #ffffff75,inset -4px 0 0 #00000026,4px 4px 0 var(--key-edge),4px 8px 0 #070b14,8px 8px 0 #070b14;
+color:#071e30;text-shadow:none;font-weight:700;letter-spacing:.4px;
+}
+button:hover:not(:disabled),.nav a:hover{
+background:linear-gradient(to bottom,var(--key-top) 0 5px,var(--key-face) 5px calc(100% - 5px),var(--key-edge) calc(100% - 5px));
+border-color:#ffffff;filter:brightness(1.12);transform:translate(-1px,-2px);
+box-shadow:inset 4px 0 0 #ffffff90,inset -4px 0 0 #0002,5px 6px 0 var(--key-edge),5px 10px 0 #070b14,9px 10px 0 #070b14;
+}
+button:active:not(:disabled),.nav a:active{
+transform:translate(3px,5px);
+box-shadow:inset 4px 0 0 #ffffff70,inset -4px 0 0 #0002,1px 2px 0 var(--key-edge),2px 3px 0 #070b14;
+}
+button.primary,#generateBtn{--key-top:#f0ff9b;--key-face:#c5ff00;--key-edge:#6bb600;color:#193000}
+#runBtn{--key-top:#b5fff0;--key-face:#00ffc3;--key-edge:#009b73;color:#003b29}
+#resetBtn{--key-top:#fff6a1;--key-face:#ffce00;--key-edge:#ec8100;color:#492800}
+#decisionBtn{--key-top:#fff09b;--key-face:#ffb000;--key-edge:#db6100;color:#492000}
+#helpBtn,#exportBtn{--key-top:#f0c2ff;--key-face:#cc75ff;--key-edge:#8134d6;color:#31005c}
+#stopBtn{--key-top:#ffc9e4;--key-face:#ff599b;--key-edge:#b31d63;color:#530024!important}
+.nav a:nth-child(1){--key-top:#edff9d;--key-face:#c5ff00;--key-edge:#6ab000}
+.nav a:nth-child(2){--key-top:#aeffff;--key-face:#00eaff;--key-edge:#008eb8}
+.nav a:nth-child(3){--key-top:#edbdff;--key-face:#c278ff;--key-edge:#7535c2}
+.nav a:nth-child(4){--key-top:#fff39f;--key-face:#ffbf00;--key-edge:#da7600}
+.nav a.active{
+color:#163000;outline:2px solid #e7ff72;outline-offset:3px;
+box-shadow:inset 4px 0 0 #fff9,inset -4px 0 0 #0002,4px 4px 0 var(--key-edge),4px 8px 0 #070b14,8px 8px 0 #070b14;
+}
+.nav i{border-radius:0;border:2px solid #17334055;background:#ffffff40;box-shadow:2px 2px 0 #0002}
+.nav{gap:18px}
+.actions,.verdict-actions{gap:18px}
+.switch{border-radius:0;gap:12px;padding:7px 9px 14px}
+.switch button,.switch button.on{
+border-radius:0;
+background:linear-gradient(to bottom,var(--key-top) 0 4px,var(--key-face) 4px calc(100% - 4px),var(--key-edge) calc(100% - 4px));
+}
+.switch button.on{--key-top:#edff9d;--key-face:#c5ff00;--key-edge:#6ab000;color:#193000}
+button:disabled{
+filter:none;color:#9eaaa2;background:linear-gradient(to bottom,#59665b 0 4px,#35473a 4px calc(100% - 4px),#213324 calc(100% - 4px));
+border:2px solid #17251c;box-shadow:inset 3px 0 0 #ffffff18,3px 3px 0 #17251c,3px 6px 0 #0b130e;
+}
+
+/* 语义状态：彩底白字 */
+.mint,.amber,.red,.type,.log .level,
+.legend span,.checks div>span:last-child,
+.history-list>div:last-child,.stat b.mint,.stat b.amber,
+#verdictWord,#decisionPanel strong,#robotTag{
+--status-bg:#26713d;
+color:#fff;
+background:var(--status-bg);
+border-color:var(--status-bg);
+border-radius:4px;
+padding:3px 8px;
+box-decoration-break:clone;
+-webkit-box-decoration-break:clone;
+}
+.amber,.type.misplaced,.log .WARN,.checks div>span.amber,
+.stat b.amber,#decisionPanel strong{--status-bg:#a65309}
+.red,.type.missing,.log .STOP{--status-bg:#b83143}
+.type.occluded{--status-bg:#2465bd}
+.type.added{--status-bg:#7951ac}
+.type.ok,.log .PASS,.checks div>span.mint{--status-bg:#26713d}
+.legend span:nth-child(1){--status-bg:#a65309;color:#fff!important}
+.legend span:nth-child(2){--status-bg:#b83143;color:#fff!important}
+.legend span:nth-child(3){--status-bg:#2465bd;color:#fff!important}
+.legend span:nth-child(4){--status-bg:#7951ac;color:#fff!important}
+.legend span:before{display:none}
+.verdict.amber{background:#a65309;color:#fff;padding:10px 14px}
+.verdict.mint{background:#26713d;color:#fff;padding:10px 14px}
+.verdictWord{color:#fff}
+.checks div .mint,.checks div .amber{color:#fff}
+.log .WARN{background:#a65309;color:#fff}
+.log .STOP{background:#b83143;color:#fff}
+.log .level{color:#fff}
+.stat b small{color:inherit}
+.sidefoot>.mint{display:inline-block}
+.pill.mint{color:#fff}
+
+/* 指定按钮使用白字 */
+#helpBtn,#verifyBtn,#exportBtn,#helpBtn:hover,#verifyBtn:hover,#exportBtn:hover{color:#fff;text-shadow:none}
+
+/* 判定区域：荧光绿色底 */
+#verification .verdict.amber,
+#verification .checks div>span.amber,
+#verification #decisionPanel strong{
+background:#B4FF00;
+--status-bg:#B4FF00;
+border-color:#B4FF00;
+color:#fff;
+}
+#verification:not(.ready){border-left-color:#B4FF00}
+
+/* 荧光绿底色使用黑字 */
+#verification .verdict.amber,
+#verification .checks div>span.amber,
+#verification #decisionPanel strong,
+#generateBtn,#generateBtn:hover:not(:disabled),
+.switch button.on,.switch button.on:hover,
+.nav a:first-child,.nav a:first-child:hover,
+.nav a:first-child.active{color:#000;text-shadow:none}
+/* 物品决策工作区 */
+.planbody{display:grid;grid-template-columns:minmax(240px,1fr) minmax(280px,1fr);gap:24px}
+.planbody>.kv,.planbody>.bar{grid-column:1/-1}
+.manual-work{border-left:1px solid var(--line);padding-left:24px}
+.manual-work svg{width:100%;display:block;cursor:crosshair}
+.manual-work h3{margin:12px 0}.manual-work p{font-size:16px}
+#placementDialog svg{width:100%;cursor:crosshair}
+@media(max-width:850px){.planbody{grid-template-columns:1fr}.manual-work{border-left:0;border-top:1px solid var(--line);padding:16px 0}}
+
+/* 步骤与动画始终左右排列，可在窄屏内部横向滚动 */
+.planbody{display:grid!important;grid-template-columns:minmax(230px,0.85fr) minmax(340px,1.15fr)!important;overflow-x:auto;align-items:start}
+.planbody>.kv,.planbody>.bar{grid-column:1/-1}
+.manual-work{grid-column:2;grid-row:3;border-left:1px solid var(--line);border-top:0;padding:0 0 0 20px;min-width:340px}
+#steps{grid-column:1;grid-row:3}
+.robot-stage{background:#111a18;border:1px solid #38523d;border-radius:8px;overflow:hidden}
+.robot-stage svg{cursor:default;min-height:230px}
+.model-preview{height:190px;display:grid;place-items:center;background:radial-gradient(ellipse,#303e38,#111815);border:1px solid #47564b;border-radius:8px;margin:16px 0;overflow:hidden}
+.model-preview svg{width:220px;height:175px;filter:drop-shadow(6px 12px 8px #0008)}
+.model-preview svg{animation:modelFloat 4s ease-in-out infinite}
+@keyframes modelFloat{50%{transform:translateY(-5px) rotate(3deg)}}
+.robot-moving .robot-forearm{animation:robotReach 1.8s ease-in-out both;transform-origin:150px 105px}
+.robot-moving .carry-object{animation:carryItem 1.8s ease-in-out both}
+@keyframes robotReach{0%,100%{transform:rotate(0)}45%{transform:rotate(-22deg)}}
+@keyframes carryItem{0%{transform:translate(0,0)}35%{transform:translate(-25px,-45px)}75%{transform:translate(65px,-45px)}100%{transform:translate(65px,0)}}
+@media(prefers-reduced-motion:reduce){.model-preview svg,.robot-moving .robot-forearm,.robot-moving .carry-object{animation:none}}
+
+/* 参考机器人与桌面的透明三帧动作 */
+.robot-stage{background:transparent;border:0}
+.robot-render-sprite{width:100%;aspect-ratio:1/1;background-image:url('robot-operation-frames.png');background-size:300% 100%;background-repeat:no-repeat;background-position:0% 0%}
+.robot-moving .robot-render-sprite{animation:referenceRobotMove 3.6s steps(1,end) both}
+@keyframes referenceRobotMove{0%,24%{background-position:0% 0%}25%,59%{background-position:50% 0%}60%,100%{background-position:100% 0%}}
+@media(prefers-reduced-motion:reduce){.robot-moving .robot-render-sprite{animation:none;background-position:100% 0%}}
+
+/* 判定区：去掉荧光绿底，使用荧光绿色文字 */
+#verification .verdict.amber,
+#verification .checks div>span.amber,
+#verification #decisionPanel strong{
+background:transparent;
+border-color:transparent;
+color:#B4FF00;
+}
+
+/* 荧光绿机器人待机摇摆 */
+.robotstrip>img[src="robot-lime.svg"]{
+transform-origin:50% 92%;
+animation:limeRobotSway 2.6s ease-in-out infinite;
+will-change:transform;
+}
+@keyframes limeRobotSway{
+0%,100%{transform:translateX(-4px) rotate(-5deg)}
+50%{transform:translateX(4px) rotate(5deg)}
+}
+@media(prefers-reduced-motion:reduce){
+.robotstrip>img[src="robot-lime.svg"]{animation:none;transform:none}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="side"><div><div class="brand"><span class="brandmark">↻</span>RE-<b>covery</b></div><small>实体世界复位智能体</small></div><nav class="nav" aria-label="主导航"><a href="#overview" class="active"><i>◫</i><span class="label">总览与判定</span></a><a href="#workspace"><i>⌖</i><span class="label">场景对照</span></a><a href="#recovery"><i>↻</i><span class="label">复位与验收</span></a><a href="#history"><i>≡</i><span class="label">实验记录</span></a></nav><div class="sidefoot"><div class="mint"><span class="dot"></span>本地模拟环境</div><p class="muted" style="margin:5px 0 20px">未连接实体机器人</p><span class="avatar mono">RE</span> Junction Team <div class="eyebrow" style="margin-top:14px">JUNCTION CHINA / 2026</div></div></aside>
+<main class="main" id="overview">
+<header class="topbar"><div><div class="crumb">工作空间 / <span>实验控制台</span></div><span class="tag">模拟演示</span></div><div><span class="eyebrow">离线 · 本地运行</span><button class="quiet tiny" id="helpBtn" aria-label="打开演示说明">? 演示指南</button></div></header>
+<section class="hero"><div><h1>让下一次实验，回到起点。</h1><p class="muted">GALBOT G1 · 实体场景复位与验证 · 桌面取放 第 3 轮</p></div><div class="actions"><button id="generateBtn" class="primary">⌁ 生成复位计划</button><button id="runBtn" class="primary" disabled>▶ 开始模拟复位</button><button id="resetBtn" class="quiet">↺ 重置</button></div></section>
+<section class="verify" id="verification"><div class="verdictband"><div class="verdict-main"><div class="eyebrow">下一轮实验能否启动 · 判定</div><div class="verdict-row"><div class="verdict amber" id="verdict" role="status" aria-live="polite">BLOCKED</div><div class="verdict-meta"><span class="verdict-word amber" id="verdictWord">暂不可启动</span><p id="verdictText">场景尚未满足下一轮实验条件。</p></div></div></div><div class="verdict-actions"><button id="decisionBtn">查看异常与处理 ↗</button><button id="verifyBtn" class="quiet tiny">重新验收</button></div></div><div class="verdict-foot"><div class="checks" id="checks"></div><div class="decision" id="decisionPanel"><strong>◇ 需要人工决策</strong><span id="decisionText">3 项异常需确认，不能直接判定就绪。</span></div></div></section>
+<section class="panel" id="workspace" style="margin-top:16px"><div class="panelhead"><h2>场景对照<span>同尺度 · S0 基准 ↔ 当前观测</span></h2><span class="pill mint"><span class="dot"></span>模拟快照</span></div><div class="scene-toolbar"><div class="switch" aria-label="标记显示"><button class="on" id="showMarks" aria-pressed="true">差异标记</button><button id="hideMarks" aria-pressed="false">纯净视图</button></div><span class="muted">俯视重建 · 示意图</span><select id="scenario" aria-label="演示场景"><option value="anomaly">异常场景 · 完整流程</option><option value="ready">已就绪 · 验收示例</option></select></div><div class="scenes"><div class="scene"><div class="scenetitle"><strong>S0 基准</strong><span>锁定 · 不可改</span></div><div id="s0"></div><div class="scene-footer"><span>REF_024 · 基准快照</span><span>6 件物品</span></div></div><div class="scene"><div class="scenetitle"><strong id="s1head">S1 当前观测</strong><span id="s1title">发现差异</span></div><div id="s1"></div><div class="scene-footer"><span id="frameLabel">FRAME_1082 · 模拟感知</span><span>CAM_01 ↗</span></div></div></div><div class="legend"><span class="amber">错位</span><span class="red">缺失</span><span style="color:var(--blue)">遮挡</span><span style="color:var(--violet)">新增</span></div><div class="scene-note"><span>坐标单位 mm · 容差 ±10 mm / ±5°</span><span>遮挡 ≠ 缺失，须二次确认</span></div></section>
+<section class="panel" id="recovery" style="margin-top:16px"><div class="panelhead"><h2>复位计划<span>5 步 · 含人工确认</span></h2><span class="muted mono" id="planCount">— / 05</span></div><div class="planbody"><div class="kv" style="margin:0"><span id="planLabel" class="muted">尚未生成</span><span class="mono mint" id="progressText">0%</span></div><div class="bar"><div id="progressBar" style="width:0%"></div></div><ol class="steps" id="steps"></ol><aside class="manual-work"><h3>物品决策 · 模拟</h3><p>先处理遮挡，再处理缺失，最后处理多余物品；可转移至桌旁货架。</p><div class="robot-stage" id="robotStage"></div><p id="robotActionText">模拟操作示意 · 等待扫描</p><div id="placementPreview"></div><p id="placementStatus">等待模拟执行中的人工决策。</p><button id="placementOpen">处理新增工具 ↗</button></aside></div></section>
+<section class="panel" id="differences" style="margin-top:16px"><div class="panelhead"><h2>物品差异<span>对象差异</span></h2><span class="muted">点击物品查看详情 ↗</span></div><div class="tablewrap"><table><thead><tr><th>物品 / ID</th><th>状态</th><th>S0 → S1 位置</th><th>置信度</th><th>处理方式</th></tr></thead><tbody id="diffRows"></tbody></table></div></section>
+<div class="secondary" style="margin-top:16px"><section class="stats" aria-label="模拟统计"><div class="stat"><label>当前实验</label><b class="mono">EXP-024</b><span>桌面取放 · 第 3 轮</span></div><div class="stat"><label>场景匹配度</label><b class="mono mint" id="matchValue">50.0<small>%</small></b><span id="matchSub">3 / 6 个目标位置已匹配</span></div><div class="stat"><label>待处理差异</label><b class="mono amber" id="diffValue">04<small>项</small></b><span id="diffSub">1 错位 · 1 缺失 · 1 遮挡 · 1 新增</span></div><div class="stat"><label>本轮复位耗时</label><b class="mono" id="elapsed">00:00<small>SIM</small></b><span id="phaseText">等待生成计划 / Standby</span></div></section><section class="robotstrip" aria-label="机器人状态"><img src="robot-lime.svg" alt="GALBOT G1 亮绿色线稿：双夹爪与轮式底座" style="width:110px;height:165px;object-fit:contain;float:right;margin:0 8px 8px 20px"><div class="row"><span class="pill mint" id="robotTag">模拟在线</span><span class="mono">GALBOT G1</span><span id="robotMode">STANDBY · 待命</span></div><div class="row"><span class="muted">机械臂 / 夹爪：</span><span id="armState">就绪 / 空闲</span><span class="muted">· 模拟电量 86%</span><span class="muted">· 任务通道 SIMULATION ONLY</span></div><div class="row"><button id="stopBtn" class="quiet tiny" style="color:var(--red)" disabled>Ⅱ 暂停模拟执行</button></div></section></div>
+<section class="panel" id="logPanel" style="margin-top:16px"><div class="panelhead"><h2>任务日志<span>事件流</span></h2><button id="exportBtn" class="quiet tiny">↓ 导出记录</button></div><div class="logs" id="logs" role="log" aria-label="模拟任务日志"></div></section>
+<section class="panel bottom" id="history"><div class="panelhead"><h2>实验记录<span>运行记录</span></h2><span class="muted">演示样本 · 非真实测试结果</span></div><div class="history-list"><div><span class="mono">EXP-023</span>桌面取放 / 第 2 轮</div><div><span>复位耗时</span><b class="mono">00:42</b></div><div><span>人工介入</span>1 次</div><div class="mint">✓ READY · 模拟记录</div></div><div class="history-list" id="currentHistory" style="border-top:1px solid var(--line-soft)"><div><span class="mono">EXP-024</span>桌面取放 / 第 3 轮</div><div class="amber">等待复位 · 当前演示</div></div></section>
+<footer><span>RE-COVERY · 实体场景复位控制台</span><span>设计参考 v1.0 · 全部数据与动作均为模拟</span></footer>
+</main></div>
+<dialog class="dialog" id="decisionDialog"><div class="eyebrow amber">人工确认</div><h2>先消除不确定，再继续。</h2><div class="model-preview" id="decisionDialogModel" aria-label="当前物品立体示意"></div><p>以下按钮模拟现场人工操作及确认。确认不会跳过最终位置、可见性与多余物品验收。</p><div id="decisionRows"></div><div class="actions"><button data-close="decisionDialog">返回控制台</button><button class="primary" id="resumeDecision" disabled>确认并继续复位</button></div></dialog>
+<dialog class="dialog" id="detailDialog"><div class="eyebrow">物品详情</div><h2 id="detailTitle"></h2><div id="detailBody"></div><div class="actions"><button data-close="detailDialog">关闭详情</button></div></dialog>
+<dialog class="dialog" id="helpDialog"><div class="eyebrow mint">交互演示说明</div><h2>一次完整的 RE-covery 演示</h2><p>为 Junction China 2026 设计的视觉与信息架构参考。场景为程序绘制示意图，不代表真实相机、G1 外观或已验证的机器人能力。</p><ol><li>点击「生成复位计划」，查看五步操作。</li><li>点击「开始模拟复位」，观察积木归位。</li><li>执行会因三项异常进入 BLOCKED。逐项模拟确认遮挡、补回缺失物品、移走新增物品。</li><li>确认后继续执行，二次验收全部通过才显示 READY。</li><li>可随时暂停、重置，或切换「已就绪」示例；导出 JSON 查看本轮记录。</li></ol><p>完全离线运行，无外部资源、无真实控制接口。刷新页面会重置。文件本身即可分享；通过聊天或邮件发送 HTML 文件后，下载并用浏览器打开。</p><div class="actions"><button class="primary" data-close="helpDialog">开始体验</button></div></dialog>
+<dialog class="dialog" id="placementDialog"><h2>如何处理新增工具？</h2><div class="model-preview" id="placementDialogModel" aria-label="当前物品立体示意"></div><p>仅改变模拟场景。丢弃会移出工作区；指定位置可点击下方网格。</p><div class="actions"><button id="discardObject">丢弃</button><button id="choosePosition" class="primary">放到指定位置</button></div><div id="placementGrid" hidden></div><p id="pointHint"></p><div class="actions"><button data-close="placementDialog">取消</button><button id="applyPosition" class="primary" disabled>确认放置</button></div></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const objects=[{id:'C01',name:'绿色积木',type:'misplaced',label:'错位',target:'(180, 120)',current:'(310, 195)',confidence:'98.2%',method:'机械臂归位',color:'#b4f376'},{id:'C02',name:'蓝色量杯',type:'missing',label:'缺失',target:'(320, 120)',current:'确认不在台面',confidence:'96.4%',method:'人工补回',color:'#80b7ff'},{id:'C03',name:'金属零件',type:'occluded',label:'遮挡',target:'(180, 240)',current:'位置待确认',confidence:'61.3%',method:'移除遮挡后复检',color:'#b5c7d5'},{id:'X01',name:'新增工具',type:'added',label:'新增',target:'不应存在',current:'(365, 260)',confidence:'99.1%',method:'人工移出工作区',color:'#c8a2f6'}];
+const stepNames=['绿色积木归位','确认遮挡区域','补回蓝色量杯','移除新增工具','二次扫描与验收'];
+const stepSubs=['C01 → (180, 120) · ±10 mm','C03 · 人工移开遮挡后复检','C02 · 人工补回标准位置','X01 → 工作区外 · 人工确认','位置 / 可见性 / 多余物品检查'];
+let state,timer=null,ticker=null,toastTimer;
+function log(level,msg){state.logs.push({time:new Date().toLocaleTimeString('zh-CN',{hour12:false}),level,message:msg});renderLogs()}
+function renderLogs(){$('logs').replaceChildren(...state.logs.map(l=>{let d=document.createElement('div');d.className='log';for(const [tag,txt,cls] of [['time',l.time,''],['span',l.level,'level '+l.level],['span',l.message,'']]){let el=document.createElement(tag);el.textContent=txt;el.className=cls;d.append(el)}return d}));$('logs').scrollTop=$('logs').scrollHeight}
+function notify(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3200)}
+function stopTimers(){clearTimeout(timer);clearInterval(ticker);timer=ticker=null}
+function reset(ready=false){stopTimers();document.querySelectorAll('dialog[open]').forEach(x=>x.close());state={phase:ready?'ready':'detected',done:ready?5:0,seconds:0,resolved:[ready,ready,ready,ready],confirmed:[false,false,false],marks:true,selected:null,logs:[],interventions:0};$('scenario').value=ready?'ready':'anomaly';log('INFO',ready?'载入 READY 模拟样本，6 个目标匹配。':'载入 S0 基准与 S1 模拟快照，检测到 4 项差异。');if(!ready)log('WARN','C03 被遮挡：无法确认位置，不判定为缺失。');render()}
+function cube(x,y,c){return `<g transform="translate(${x} ${y}) scale(1.3)"><ellipse cy="17" rx="22" ry="7" fill="#000" opacity=".45"/><path d="M-16-10L0-18 17-10 0-2Z" fill="${c}" stroke="#fff" stroke-opacity=".65" stroke-width=".8" stroke-linejoin="round"/><path d="M-16-10L0-2V17L-16 8Z" fill="${c}" stroke="${c}" stroke-linejoin="round"/><path d="M-16-10L0-2V17L-16 8Z" fill="#000" opacity=".23"/><path d="M0-2L17-10V8L0 17Z" fill="${c}"/><path d="M0-2L17-10V8L0 17Z" fill="#000" opacity=".1"/><path d="M0-2V16M-15-10L0-2 16-10" fill="none" stroke="#fff" stroke-opacity=".3" stroke-width=".8"/></g>`}
+function scene(reference){let r=reference?[true,true,true,true]:state.resolved;let suffix=reference?'a':'b';let mark=(i,x,y,w,h,label)=>!reference&&state.marks&&!r[i]?`<g fill="none" stroke="${['#f6bd60','#ff7a80','#80b7ff','#c8a2f6'][i]}" stroke-width="1.3"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" ${i===1?'stroke-dasharray="4 3"':''}/><path d="M${x} ${y-7}h${w}" opacity=".4"/><text x="${x}" y="${y-12}" fill="${['#f6bd60','#ff7a80','#80b7ff','#c8a2f6'][i]}" stroke="none" font-size="9" font-family="monospace">${label}</text></g>`:'';
+return `<svg viewBox="0 0 420 295" role="img" aria-label="${reference?'S0 标准场景：六件物品各在标准位置':'S1 当前场景：'+(state.done===5?'全部归位':'存在四类差异，点击标记查看')}" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="grid${suffix}" width="22" height="22" patternUnits="userSpaceOnUse"><path d="M22 0H0V22" fill="none" stroke="#A3FF12" stroke-width=".8" opacity=".85"/></pattern><linearGradient id="cup${suffix}" x1="0" x2="1"><stop stop-color="#0632b3"/><stop offset=".4" stop-color="#1467ff" stop-opacity=".7"/><stop offset=".8" stop-color="#022b9e"/><stop offset="1" stop-color="#348aff"/></linearGradient><linearGradient id="metal${suffix}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset=".3" stop-color="#a5a5af"/><stop offset=".5" stop-color="#e5e4eb"/><stop offset="1" stop-color="#777982"/></linearGradient></defs><path d="M26 45L381 34 402 249 16 261Z" fill="#0a0d0f" stroke="#3a4146"/><path d="M35 52L373 42 392 240 26 252Z" fill="#171b18"/><path d="M35 52L373 42 392 240 26 252Z" fill="url(#grid${suffix})"/><path d="M38 56h18M38 56v18M369 47h-18M369 47v18M31 245h18M31 245v-18M385 234h-18M385 234v-18" stroke="#83ce38" fill="none"/><text x="42" y="78" fill="#59666b" font-family="monospace" font-size="8">WORKSPACE / 600 × 400 mm</text><g opacity=".5" stroke="#4c5752" stroke-dasharray="3 4" fill="none"><rect x="93" y="92" width="43" height="45" rx="4"/><rect x="225" y="86" width="43" height="45" rx="4"/><rect x="99" y="176" width="43" height="40" rx="4"/></g>
+<g data-obj="0" tabindex="0" role="button" aria-label="绿色积木详情">${r[0]?cube(115,111,'#c8ff12'):cube(190,164,'#c8ff12')}${mark(0,161,132,60,62,'C01 / 错位 +150mm')}</g>
+<g transform="translate(-73.8 -33) scale(1.3)" data-obj="1" tabindex="0" role="button" aria-label="蓝色量杯详情">${r[1]?`<ellipse cx="246" cy="129" rx="19" ry="5" fill="#000" opacity=".45"/><path d="M231 95l3 29q12 10 24-1l3-29Z" fill="url(#cup${suffix})" stroke="#287cff"/><ellipse cx="246" cy="95" rx="15" ry="6" fill="#073ab0" stroke="#68b5ff" stroke-width="1.2"/><ellipse cx="246" cy="123" rx="11" ry="4" fill="none" stroke="#2979ff"/><path d="M236 103l2 19m-2-18h7m-6 6h5m-5 6h7m-6 6h5" fill="none" stroke="#e4f3ff" stroke-width=".8"/>`:'<text x="238" y="116" fill="#ff7a8099" font-size="19">?</text>'}</g>${mark(1,219,77,55,64,'C02 / 缺失')}
+<g transform="translate(-36.3 -57.3) scale(1.3)" data-obj="2" tabindex="0" role="button" aria-label="金属零件详情"><ellipse cx="121" cy="196" rx="17" ry="9" fill="#85858f"/><ellipse cx="121" cy="191" rx="17" ry="9" fill="url(#metal${suffix})" stroke="#d8d9df" stroke-width=".6"/><ellipse cx="121" cy="191" rx="7" ry="4" fill="#151914"/>${r[2]?'':'<path d="M86 175L137 165 157 204 99 218Z" fill="#566771" stroke="#8a9aa4"/><path d="M92 179l51 18M104 174l38 15M101 204l41-8" stroke="#73838c" opacity=".5"/>'}</g>${mark(2,72,157,96,76,'C03 / 遮挡 · 待确认')}
+${cube(298,183,'#ff930b')}${cube(309,101,'#b9bbc5')}<g transform="translate(-66 -63) scale(1.3)"><path d="M201 203l23-8 18 9-23 9z" fill="url(#metal${suffix})" stroke="#dedee6" stroke-width=".6"/><path d="M201 203v9l18 10v-9M219 213l23-9v9l-23 9" fill="#8c8c97"/></g>
+<g transform="${!reference&&state.toolChoice==='place'?'translate('+(state.toolPoint.x-311)+' '+(state.toolPoint.y-219)+')':''}" data-obj="3" tabindex="0" role="button" aria-label="新增工具详情">${(reference || (r[3]&&state.toolChoice!=='place'))?'':'<path d="M290 207l38 18" stroke="#b6a0ce" stroke-width="7" stroke-linecap="round"/><path d="M328 225l14 6" stroke="#637580" stroke-width="5"/><circle cx="289" cy="207" r="7" fill="#8f71b0"/>'}${mark(3,275,193,76,46,'X01 / 新增')}</g>
+<g transform="translate(355 265)" font-size="8" font-family="monospace"><path d="M0 0h22M0 0v-20" stroke="#6f7c76"/><text x="25" y="3" fill="#97a39b">X</text><text x="-3" y="-24" fill="#97a39b">Y</text></g></svg>`}
+function fmt(){return String(Math.floor(state.seconds/60)).padStart(2,'0')+':'+String(state.seconds%60).padStart(2,'0')}
+function render(){let left=state.resolved.filter(x=>!x).length,ready=state.phase==='ready';const correct=3+state.resolved.slice(0,3).filter(Boolean).length;
+$('matchValue').innerHTML=(correct/6*100).toFixed(1)+'<small>%</small>';$('matchSub').textContent=`${correct} / 6 个目标位置已匹配`;
+$('diffValue').innerHTML=String(left).padStart(2,'0')+'<small>项</small>';$('diffSub').textContent=left?objects.filter((_,i)=>!state.resolved[i]).map(o=>'1 '+o.label).join(' · '):'场景差异清零 · 等待最终验收';if(ready)$('diffSub').textContent='全部差异已消除 · 验收通过';$('elapsed').innerHTML=fmt()+'<small>SIM</small>';
+const phaseNames={detected:'等待生成计划 / Standby',planned:'计划已生成 / Planned',running:'正在模拟复位 / Running',blocked:'等待人工处理 / Blocked',paused:'已暂停 / Paused',ready:'验收通过 / Verified'};$('phaseText').textContent=phaseNames[state.phase];$('generateBtn').disabled=state.phase!=='detected';$('generateBtn').textContent=state.phase==='detected'?'⌁ 生成复位计划':'✓ 复位计划已生成';$('runBtn').disabled=!['planned','paused'].includes(state.phase);$('runBtn').textContent=state.phase==='paused'?'▶ 继续模拟复位':ready?'✓ 本轮复位已完成':'▶ 开始模拟复位';$('stopBtn').disabled=state.phase!=='running';$('robotMode').textContent=state.phase==='running'?'RUNNING · 执行中':state.phase==='blocked'?'WAITING · 等待人工':state.phase==='paused'?'PAUSED · 已暂停':'STANDBY · 待命';$('armState').textContent=state.phase==='running'?'模拟运动中 / 执行':'就绪 / 空闲';$('s0').innerHTML=scene(true);$('s1').innerHTML=scene(false);$('s1title').textContent=ready?'S2 · 复查通过':left?'发现差异':'待复查';$('s1head').textContent=ready?'S2 复查通过':left?'S1 当前观测':'S1 待复查';$('frameLabel').textContent=ready?'FRAME_1097 · 已验收快照':'FRAME_1082 · 模拟感知';$('showMarks').classList.toggle('on',state.marks);$('hideMarks').classList.toggle('on',!state.marks);$('showMarks').setAttribute('aria-pressed',state.marks);$('hideMarks').setAttribute('aria-pressed',!state.marks);
+$('diffRows').innerHTML=objects.map((o,i)=>`<tr data-obj="${i}" tabindex="0" aria-label="查看${o.name}详情" class="${state.selected===i?'selected':''}"><td><span class="object-name">${o.name}</span> <span class="muted mono">${o.id}</span></td><td><span class="type ${state.resolved[i]?'ok':o.type}">${state.resolved[i]?'✓ 已处理':o.label}</span></td><td class="mono muted">${o.target} → ${state.resolved[i]?(i===3?'已移出':o.target):o.current}</td><td class="mono">${state.resolved[i]?'99.6%':o.confidence}</td><td class="muted">${o.method}</td></tr>`).join('');
+let pct=state.done*20;$('progressText').textContent=pct+'%';$('progressBar').style.width=pct+'%';$('planCount').textContent=state.phase==='detected'?'— / 05':`${String(state.done).padStart(2,'0')} / 05`;$('planLabel').textContent=state.phase==='detected'?'尚未生成':state.phase==='blocked'?'暂停 · 需要人工确认':ready?'全部步骤完成':'5 步操作 · 3 项人工确认';$('steps').innerHTML=stepNames.map((n,i)=>`<li class="${i<state.done?'done':i===state.done&&state.phase!=='detected'?'current':''}"><span class="stepnum">${i<state.done?'✓':i+1}</span><div><strong>${n}</strong><small>${stepSubs[i]}</small></div></li>`).join('');$('verification').classList.toggle('ready',ready);$('verdict').textContent=ready?'READY':'BLOCKED';$('verdict').className='verdict '+(ready?'mint':'amber');$('verdictWord').textContent=ready?'可启动下一轮':'暂不可启动';$('verdictWord').className='verdict-word '+(ready?'mint':'amber');$('verdictText').textContent=ready?'标准状态已恢复，可以开始下一轮实验。':left?'场景尚未满足下一轮实验条件。':'物品处理完毕，等待二次扫描验收。';const tests=[['目标物品齐全',state.resolved[1]],['位置偏差 ≤ 10 mm',state.resolved[0]],['可见性与姿态确认',state.resolved[2]],['无新增物品',state.resolved[3]]];$('checks').innerHTML=tests.map(([n,ok])=>`<div><span class="muted">${n}</span><span class="${ok?'mint':'amber'}">${ok?'✓ 通过':'— 待处理'}</span></div>`).join('');$('decisionPanel').hidden=ready;$('decisionText').textContent=state.confirmed.every(Boolean)?'人工操作已确认，等待复检；仍需完成复位流程。':state.phase==='blocked'?'执行已暂停：完成三项人工处理后继续。':'3 项异常需确认，不能直接判定就绪。';$('decisionBtn').disabled=!['blocked','planned'].includes(state.phase);$('decisionBtn').textContent=state.phase==='detected'?'请先生成复位计划':state.confirmed.every(Boolean)?'人工确认完成 · 查看并继续 ↗':'查看异常与处理选项 ↗';$('currentHistory').innerHTML=`<div><span class="mono">EXP-024</span>桌面取放 / 第 3 轮</div><div><span>本轮耗时</span><b class="mono">${fmt()}</b></div><div class="${ready?'mint':'amber'}">${ready?'✓ READY · '+state.interventions+' 次人工确认':phaseNames[state.phase]}</div>`}
+function generate(){if(state.phase!=='detected')return;state.phase='planned';log('INFO','生成 5 步复位计划：自动归位 + 3 项人工确认 + 二次验收。');render();notify('计划已生成，可开始模拟复位')}
+function startClock(){clearInterval(ticker);ticker=setInterval(()=>{state.seconds++;$('elapsed').innerHTML=fmt()+'<small>SIM</small>'},1000)}
+function run(){if(!['planned','paused'].includes(state.phase))return;state.phase='running';log('INFO',state.done?'继续模拟复位。':'开始模拟执行，工作区锁定。');render();startClock();schedule()}
+function schedule(){timer=setTimeout(()=>{if(state.phase!=='running')return;if(state.done===0){state.resolved[0]=true;state.done=1;log('INFO','C01 模拟归位完成：位置偏差 3.2 mm。');render();schedule();return}if(state.done===1&&!state.confirmed.every(Boolean)){stopTimers();state.phase='blocked';log('WARN','遮挡、缺失与新增物品需要人工处理，执行已暂停。');render();notify('复位已暂停，请在验收卡中处理异常');return}if(state.done<4){state.resolved[state.done===1?2:state.done===2?1:3]=true;log('INFO',stepNames[state.done]+'完成，模拟观测已更新。');state.done++;render();schedule();return}state.done=5;if(state.toolChoice==='place'){state.phase='blocked';stopTimers();log('WARN','新增工具已放到指定点，但仍在标准工作区，保持 BLOCKED。');render();return}state.phase='ready';stopTimers();log('PASS','二次扫描通过：6/6 物品匹配，无多余物品。READY。');render();notify('READY · 场景已复位，下一轮实验可以开始')},1500)}
+function openDecisions(){if(!['planned','blocked'].includes(state.phase))return;renderDecisions();$('decisionDialog').showModal()}
+function renderDecisions(){const titles=['移开遮挡，确认金属零件在原位','将蓝色量杯补回 S0 标准位置','将新增工具移出工作区'];const subs=['C03 · 二次观测后确认，不将不可见视为丢失','C02 · 缺失须补回，不能选择忽略','X01 · 不属于实验标准场景'];$('decisionRows').innerHTML=titles.map((n,i)=>`<div class="row"><div><strong>${n}</strong><small>${subs[i]}</small></div><button data-confirm="${i}" ${state.confirmed[i]?'disabled':''} class="${state.confirmed[i]?'quiet':'primary'}">${state.confirmed[i]?'✓ 已确认':'模拟确认'}</button></div>`).join('');$('resumeDecision').disabled=!state.confirmed.every(Boolean);$('resumeDecision').textContent=state.phase==='planned'?'确认并开始复位':'确认并继续复位'}
+function details(i){state.selected=i;let o=objects[i];$('detailTitle').textContent=o.name+' / '+o.id;$('detailBody').innerHTML=`<p>${state.resolved[i]?'处理已完成。':o.label+' · '+o.method}</p><div class="row"><span>标准位置 S0</span><span class="mono">${o.target}</span></div><div class="row"><span>当前观测 S1</span><span>${state.resolved[i]?(i===3?'已移出工作区':o.target):o.current}</span></div><div class="row"><span>模拟置信度</span><span class="mono">${state.resolved[i]?'99.6%':o.confidence}</span></div><p style="margin-top:15px">${i===2?'遮挡状态下不推断物品丢失。需移开遮挡并重新观测。':i===0?'位置偏差约 150 mm，超过 ±10 mm 验收容差。':i===1?'演示预设已由现场人工确认缺失，需补回；仅视觉不可见时应归类为待确认。':'标准场景不包含该工具，须移出后复检。'}</p>`;render();$('detailDialog').showModal()}
+$('generateBtn').onclick=generate;$('runBtn').onclick=run;$('resetBtn').onclick=()=>{reset();notify('演示已重置，回到初始异常场景')};$('scenario').onchange=e=>reset(e.target.value==='ready');$('showMarks').onclick=()=>{state.marks=true;render()};$('hideMarks').onclick=()=>{state.marks=false;render()};$('stopBtn').onclick=()=>{if(state.phase!=='running')return;stopTimers();state.phase='paused';log('STOP','用户暂停模拟执行，当前步骤保留。');render();notify('已暂停，可点击继续模拟复位')};$('helpBtn').onclick=()=>$('helpDialog').showModal();$('decisionBtn').onclick=openDecisions;
+$('resumeDecision').onclick=()=>{if(!state.confirmed.every(Boolean))return;$('decisionDialog').close();if(state.phase==='blocked')state.phase='paused';run()};
+$('decisionRows').onclick=e=>{const b=e.target.closest('[data-confirm]');if(!b)return;const i=+b.dataset.confirm;if(state.confirmed[i])return;state.confirmed[i]=true;state.interventions++;log('HUMAN',['人工模拟确认：遮挡已移开，C03 在标准位置。','人工模拟确认：C02 已补回标准位置。','人工模拟确认：X01 已移出工作区。'][i]);renderDecisions();render()};
+$('verifyBtn').onclick=()=>{if(state.phase==='running'){notify('正在执行，请等待自动二次验收');return}if(state.phase==='ready'){log('PASS','重新验收通过：6/6 标准位置匹配，无多余物品。');notify('READY · 重新验收通过')}else{log('WARN','验收未通过：复位流程未完成，保持 BLOCKED。');notify('BLOCKED · 请先完成复位与人工确认')}render()};
+$('exportBtn').onclick=()=>{const report={project:'RE-covery',mode:'SIMULATION',experiment:'EXP-024',manualDecision:{action:state.toolChoice||null,point:state.toolPoint||null},exportedAt:new Date().toISOString(),verdict:state.phase==='ready'?'READY':'BLOCKED',phase:state.phase,elapsedSeconds:state.seconds,tolerance:{positionMm:10,rotationDeg:5},completedSteps:state.done,humanConfirmations:state.interventions,objects:objects.map((o,i)=>({...o,resolved:state.resolved[i]})),events:state.logs};let url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));let a=document.createElement('a');a.href=url;a.download='RE-covery-EXP024-simulation.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);notify('本轮模拟记录已导出为 JSON')};
+document.addEventListener('click',e=>{let c=e.target.closest('[data-close]');if(c){$(c.dataset.close).close();return}let o=e.target.closest('[data-obj]');if(o)details(+o.dataset.obj)});document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-obj]')){e.preventDefault();details(+e.target.dataset.obj)}});document.querySelectorAll('.nav a').forEach(a=>a.onclick=()=>{document.querySelectorAll('.nav a').forEach(x=>x.classList.remove('active'));a.classList.add('active')});reset();
+
+
+
+
+let motionTimer=null;
+function itemModel(kind){
+ const defs='<defs><linearGradient id="modelMetal"><stop stop-color="#fafbff"/><stop offset=".4" stop-color="#9299a6"/><stop offset=".7" stop-color="#eee"/><stop offset="1" stop-color="#68717f"/></linearGradient><linearGradient id="modelCup"><stop stop-color="#072eac"/><stop offset=".5" stop-color="#1d83ff" stop-opacity=".7"/><stop offset="1" stop-color="#0645ce"/></linearGradient></defs>';
+ const shapes={
+ occlusion:'<path d="M55 75L130 45 175 90 97 125Z" fill="#bbc6d4" stroke="#f1f5ff"/><path d="M55 75v18l42 50v-18M97 125l78-35v18l-78 35" fill="#778493" stroke="#a9b8c6"/>',
+ missing:'<path d="M70 52l10 83q30 24 60-1l10-82" fill="url(#modelCup)" stroke="#3d9cff" stroke-width="2"/><ellipse cx="110" cy="52" rx="40" ry="16" fill="#043ca1" stroke="#85caff" stroke-width="2"/><ellipse cx="110" cy="131" rx="29" ry="12" fill="none" stroke="#4c9bff"/><path d="M83 76h23m-21 15h15m-13 15h21m-20 15h15" stroke="#fff" stroke-width="2"/>',
+ extra:'<g transform="rotate(-25 110 90)"><rect x="55" y="78" width="82" height="20" rx="9" fill="#bd8af0" stroke="#e8d1ff" stroke-width="2"/><path d="M130 81h40v15h-40" fill="url(#modelMetal)" stroke="#e2e9f4"/><circle cx="67" cy="88" r="5" fill="#663c91"/></g>',
+ cube:cube(110,90,'#c8ff12')
+ };
+ return '<svg viewBox="0 0 220 175" role="img" aria-label="物品立体示意">'+defs+'<ellipse cx="112" cy="148" rx="63" ry="9" fill="#0005"/>'+shapes[kind]+'</svg>';
+}
+function robotDrawing(){
+ return '<div class="robot-render-sprite" role="img" aria-label="机器人在操作台夹取、抬起和移动积木的三帧示意动画"></div>';
+}
+function animateAction(label){
+ if(!$('robotStage'))return;
+ $('robotActionText').textContent='当前操作：'+label+' · 夹取动作示意';
+ $('robotStage').innerHTML=robotDrawing();$('robotStage').classList.remove('robot-moving');
+ void $('robotStage').offsetWidth;$('robotStage').classList.add('robot-moving');
+ clearTimeout(motionTimer);motionTimer=setTimeout(()=>$('robotStage').classList.remove('robot-moving'),3600);
+}
+let pickedPoint=null,flowStage='idle';
+function flowData(){return state.flow||(state.flow={occlusion:null,missing:null,extra:null,point:null})}
+function shelfSvg(){
+ const f=flowData();const placed=f.extra==='transfer'&&f.point?.area==='shelf';
+ return '<svg viewBox="0 0 420 180" role="img" aria-label="桌旁货架，三个可选格位"><rect x="25" y="15" width="370" height="145" rx="5" fill="#151d17" stroke="#a3ff12" stroke-width="2"/>'+
+ [0,1,2].map(i=>'<g data-shelf="'+i+'" tabindex="0" role="button" aria-label="货架第'+(i+1)+'格"><rect x="'+(35+i*120)+'" y="25" width="110" height="115" fill="#222c24" stroke="#6d9635"/><text x="'+(65+i*120)+'" y="125" fill="#fff" font-size="14">货架 '+(i+1)+'</text>'+(placed&&f.point.slot===i?'<path d="M'+(60+i*120)+' 65l45 18" stroke="#c8a2f6" stroke-width="10" stroke-linecap="round"/>':'')+'</g>').join('')+'</svg>';
+}
+function showFlow(stage){
+ flowStage=stage;
+ $('decisionDialogModel').innerHTML=itemModel(stage);
+ const f=flowData();
+ const data={
+ occlusion:['扫描发现遮挡','先移开遮挡物，再识别后面的物品。',[['remove','移开遮挡物'],['cancel','取消']]],
+ missing:['复查发现物品缺失','蓝色量杯 C02 缺失，选择补全或跳过。',[['complete','补全'],['skip','跳过']]],
+ extra:['发现多余物品','新增工具 X01：丢弃，或转移至桌面指定点／桌旁货架。',[['discard','丢弃'],['transfer','转移至正确位置']]]
+ }[stage];
+ if(!data)return;
+ $('decisionDialog').querySelector('h2').textContent=data[0];
+ $('decisionDialog').querySelector('p').textContent=data[1];
+ $('decisionRows').innerHTML='<div class="actions">'+data[2].map(([v,t])=>'<button data-flow="'+v+'">'+t+'</button>').join('')+'</div>';
+ $('resumeDecision').hidden=true;
+ if(!$('decisionDialog').open)$('decisionDialog').showModal();
+}
+function renderDecisions(){showFlow(flowStage==='idle'?'occlusion':flowStage)}
+function openDecisions(){
+ if(state.phase==='running'){notify('正在扫描，请稍候');return}
+ const f=flowData();showFlow(!f.occlusion||f.occlusion==='cancel'?'occlusion':!f.missing?'missing':'extra');
+}
+function finishFlow(){
+ const f=flowData();
+ state.phase='blocked';state.done=4;
+ render();
+ const pass=f.occlusion==='remove'&&f.missing==='complete'&&(f.extra==='discard'||(f.extra==='transfer'&&f.point?.area==='shelf'));
+ log(pass?'PASS':'WARN',pass?'模拟复查通过：桌面恢复基准，新增物已移出。':'模拟复查未通过：存在遮挡、缺失或桌面新增物品。');
+ state.phase=pass?'ready':'blocked';state.done=pass?5:4;render();
+}
+$('decisionRows').onclick=e=>{
+ const btn=e.target.closest('[data-flow]');if(!btn)return;
+ const action=btn.dataset.flow,f=flowData();state.interventions++;
+ if(!['cancel','skip','transfer'].includes(action))animateAction({remove:'移开遮挡物',complete:'补全蓝色量杯',discard:'丢弃新增工具'}[action]);
+ if(flowStage==='occlusion'){
+ f.occlusion=action;
+ if(action==='cancel'){state.phase='blocked';$('decisionDialog').close();render();notify('已取消移开，保留遮挡；后续识别未继续。');return}
+ state.resolved[2]=true;state.confirmed[0]=true;log('HUMAN','模拟移开遮挡物，重新扫描可见区域。');render();showFlow('missing');
+ }else if(flowStage==='missing'){
+ f.missing=action;state.resolved[1]=action==='complete';state.confirmed[1]=action==='complete';
+ log('HUMAN',action==='complete'?'模拟补全缺失量杯。':'跳过补全，缺失仍保留。');render();showFlow('extra');
+ }else if(flowStage==='extra'){
+ if(action==='transfer'){$('decisionDialog').close();openTransfer();return}
+ f.extra='discard';f.point=null;state.resolved[3]=true;state.confirmed[2]=true;$('decisionDialog').close();finishFlow();
+ }
+};
+function openTransfer(){
+ pickedPoint=null;
+ $('placementDialogModel').innerHTML=itemModel('extra');
+ $('placementDialog').querySelector('h2').textContent='选择正确位置：桌面或货架';
+ $('placementDialog').querySelector('p').textContent='点击桌面空位，或选择桌旁货架的一格。桌面仍有新增物时不会通过 S0 验收。';
+ $('discardObject').hidden=true;$('choosePosition').hidden=true;
+ $('placementGrid').hidden=false;
+ $('placementGrid').innerHTML='<h3>桌面指定点</h3><div id="tablePicker">'+scene(false)+'</div><h3>桌旁货架</h3><div id="shelfPicker">'+shelfSvg()+'</div>';
+ $('pointHint').textContent='请选择目标位置';$('applyPosition').disabled=true;$('placementDialog').showModal();
+}
+$('placementGrid').onclick=e=>{
+ e.stopPropagation();const slot=e.target.closest('[data-shelf]');
+ if(slot){pickedPoint={area:'shelf',slot:+slot.dataset.shelf};$('pointHint').textContent='已选择货架第 '+(pickedPoint.slot+1)+' 格';}
+ else{
+ const svg=$('tablePicker')?.querySelector('svg');if(!svg||!svg.contains(e.target))return;
+ const pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const q=pt.matrixTransform(svg.getScreenCTM().inverse());
+ if(q.x<55||q.x>360||q.y<85||q.y>225){$('pointHint').textContent='请选择桌面内侧';return}
+ pickedPoint={area:'table',x:Math.round(q.x),y:Math.round(q.y)};$('pointHint').textContent='桌面坐标：('+pickedPoint.x+', '+pickedPoint.y+')';
+ svg.querySelector('[data-picked]')?.remove();
+ const marker=document.createElementNS('http://www.w3.org/2000/svg','circle');
+ for(const [k,v] of Object.entries({'data-picked':'true',cx:pickedPoint.x,cy:pickedPoint.y,r:8,fill:'none',stroke:'#b4ff00','stroke-width':2}))marker.setAttribute(k,v);
+ svg.append(marker);
+ }
+ $('applyPosition').disabled=false;
+};
+$('applyPosition').onclick=()=>{
+ if(!pickedPoint)return;
+ const f=flowData();f.extra='transfer';f.point=pickedPoint;animateAction(pickedPoint.area==='shelf'?'转移工具到货架':'转移工具到桌面指定点');
+ state.toolChoice=pickedPoint.area==='table'?'place':'discard';state.toolPoint=pickedPoint;
+ state.resolved[3]=pickedPoint.area==='shelf';state.confirmed[2]=true;
+ log('HUMAN',pickedPoint.area==='shelf'?'工具已转移至桌旁货架第 '+(pickedPoint.slot+1)+' 格':'工具已转移至桌面指定点');
+ $('placementDialog').close();finishFlow();
+};
+const baseRender=render;
+render=function(){
+ baseRender();const f=flowData();
+ if(!$('robotStage').innerHTML)$('robotStage').innerHTML=robotDrawing();
+ $('placementPreview').innerHTML=scene(false)+'<h3>桌旁货架</h3>'+shelfSvg();
+ $('placementStatus').textContent=!f.occlusion?'扫描后先处理遮挡，再处理缺失和多余物品。':f.occlusion==='cancel'?'遮挡处理已取消，后续识别暂停。':f.extra==='transfer'?'已转移至'+(f.point.area==='shelf'?'桌旁货架':'桌面指定点'):f.extra==='discard'?'新增工具已丢弃。':'等待下一阶段处理。';
+ $('placementOpen').disabled=state.phase==='running';
+ if(state.phase==='blocked'&&f.occlusion==='cancel')$('verdictText').textContent='遮挡未移开，无法继续确认后方物品。';
+ if(state.phase==='blocked'&&f.missing==='skip')$('verdictText').textContent='已跳过补全：标准物品仍缺失。';
+};
+function run(){
+ if(!['planned','paused'].includes(state.phase))return;
+ state.phase='running';log('INFO','开始模拟扫描桌面。');render();animateAction('扫描与积木归位');
+ timer=setTimeout(()=>{state.resolved[0]=true;state.done=1;state.phase='blocked';render();showFlow('occlusion')},1000);
+}
+$('runBtn').onclick=run;
+$('generateBtn').textContent='生成扫描与复位计划';
+$('placementOpen').textContent='继续处理异常';
+$('placementOpen').onclick=openDecisions;
+$('decisionBtn').onclick=openDecisions;
+$('verifyBtn').onclick=()=>{if(state.phase==='running'){notify('正在扫描');return}finishFlow()};
+$('placementDialog').addEventListener('cancel',()=>notify('选点已取消，工具尚未转移，可重新处理'));
+$('placementGrid').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('[data-shelf]'))e.target.dispatchEvent(new MouseEvent('click',{bubbles:true}))});
+const exportBase=$('exportBtn').onclick;
+$('exportBtn').onclick=()=>{log('INFO','分阶段决策：'+JSON.stringify(flowData()));exportBase()};
+render();
+</script></body></html>
