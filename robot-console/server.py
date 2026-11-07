@@ -2,6 +2,8 @@ import http.server,json,subprocess,threading,queue,time,secrets,os,shlex,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 ROBOT=os.environ.get('ROBOT_HOST','192.168.167.46')
+ROBOT_USER=os.environ.get('ROBOT_USER','galbot')
+MUX=os.environ.get('ROBOT_SOCK','/tmp/kitt-console-live.sock')
 TOKEN=secrets.token_urlsafe(32); pending={}; seq=0; send_lock=threading.Lock(); last_browser=0; busy_until=0; fault=None; ready=False
 p=None
 
@@ -99,11 +101,10 @@ if __name__=='__main__':
    s=socket.create_connection((host,port),timeout)
    s.close();return True
   except (OSError,ValueError):return False
- MUX='/tmp/kitt-console-live.sock'
  def mux_ok():
   if os.environ.get("ROBOT_OFFLINE_REASON"):return False
   try:
-   return subprocess.run(['ssh','-S',MUX,'-O','check','galbot@'+ROBOT],capture_output=True,timeout=8).returncode==0
+   return subprocess.run(['ssh','-S',MUX,'-O','check',ROBOT_USER+'@'+ROBOT],capture_output=True,timeout=8).returncode==0
   except Exception:return False
  if mux_ok():
   print('✓ SSH 主连接可用：%s'%ROBOT,flush=True)
@@ -116,7 +117,7 @@ if __name__=='__main__':
  def spawn_bridge():
   global p,fault,ready
   ready=False;fault=None
-  p=subprocess.Popen(['ssh','-S',MUX,'-o','BatchMode=yes','-o','ConnectTimeout=5','-o','ConnectionAttempts=1','-o','ServerAliveInterval=2','-o','ServerAliveCountMax=2','galbot@'+ROBOT,command],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1)
+  p=subprocess.Popen(['ssh','-S',MUX,'-o','BatchMode=yes','-o','ConnectTimeout=5','-o','ConnectionAttempts=1','-o','ServerAliveInterval=2','-o','ServerAliveCountMax=2',ROBOT_USER+'@'+ROBOT,command],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1)
   threading.Thread(target=reader,args=(p,),daemon=True).start()
   threading.Thread(target=stderr_reader,args=(p,),daemon=True).start()
   return p

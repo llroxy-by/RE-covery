@@ -10,7 +10,7 @@ posture_model=ET.parse(LIMIT_PATH).getroot()
 from galbot_sdk.g1 import GalbotRobot,ControlStatus
 robot=GalbotRobot(); lock=threading.RLock(); last=time.monotonic(); moving=False; baseline={}; last_stamps={}
 position_groups=('head','left_arm','right_arm','leg')
-active_position_joints=set()
+active_position_joints=set(); last_inventory=-float("inf"); inventory_error=None
 base_v=0.;base_w=0.; base_deadline=0.; base_seq=0; base_error=None; base_error_at=0.; base_ctrl='未知'
 def emit(obj): print('KITT_JSON '+json.dumps(obj),flush=True)
 def sname(status):
@@ -21,7 +21,19 @@ def active_base_controller():
     if fn is None:return '未知'
     try:return str(fn('chassis'))
     except Exception as e:return '未知('+str(e)+')'
+def refresh_position_inventory(force=False):
+    global active_position_joints,last_inventory,inventory_error
+    now=time.monotonic()
+    if not force and now-last_inventory<2.:return
+    last_inventory=now
+    try:
+        names={name for group in position_groups for name in robot.get_joint_names(True,[group])}
+        active_position_joints=names
+        inventory_error=None if names else 'SDK 可控关节清单尚未就绪'
+    except Exception as e:
+        active_position_joints=set();inventory_error='无法读取SDK可控关节清单：'+str(e)
 def states():
+    refresh_position_inventory()
     result=[]
     for s in robot.get_joint_states([],[]):
         if not any(s.joint_name.startswith(g+'_joint') for g in position_groups+('chassis',)):continue
@@ -57,8 +69,8 @@ def watchdog():
                 robot.stop_trajectory_execution();moving=False
 try:
     if not robot.init():raise RuntimeError('SDK 初始化失败')
-    active_position_joints={name for g in position_groups for name in robot.get_joint_names(True,[g])}
     time.sleep(1)
+    refresh_position_inventory(force=True)
     threading.Thread(target=watchdog,daemon=True).start()
     emit({'ready':True})
     for line in sys.stdin:

@@ -1,7 +1,6 @@
 """Exercise the real server.py HTTP layer against a fake SDK bridge; never touches hardware.
 
-Run with the console NOT already running (it binds 127.0.0.1:8765 to match the
-Origin allow-list in server.py):
+Runs on independent port 18765 with the production Origin allow-list:
 
     python3 -B test_server.py
 """
@@ -76,8 +75,8 @@ def main():
         httpd = server.http.server.ThreadingHTTPServer(('127.0.0.1', 18765), server.Handler)
     except OSError:
         proc.kill()
-        print('跳过：127.0.0.1:8765 已被占用（先关闭正在运行的控制台）')
-        return 0
+        print('失败：离线测试端口127.0.0.1:18765已被占用')
+        return 1
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     time.sleep(0.8)
 

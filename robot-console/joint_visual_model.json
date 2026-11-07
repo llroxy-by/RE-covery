@@ -1,0 +1,422 @@
+[
+  {
+    "name": "torso_left_arm_mount_joint",
+    "type": "fixed",
+    "parent": "torso_base_link",
+    "child": "torso_left_arm_mount_link",
+    "xyz": [
+      0.210017680480957,
+      0.1751423438715,
+      0.001437025251664
+    ],
+    "rpy": [
+      1.324577561296841,
+      1.557475095756227,
+      1.328878474561832
+    ],
+    "axis": [
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "name": "left_arm_base_joint",
+    "type": "fixed",
+    "parent": "torso_left_arm_mount_link",
+    "child": "left_arm_base_link",
+    "xyz": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rpy": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "axis": [
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "name": "left_arm_joint1",
+    "type": "revolute",
+    "parent": "left_arm_base_link",
+    "child": "left_arm_link1",
+    "xyz": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rpy": [
+      0.0,
+      0.0,
+      0.5236
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "left_arm_joint2",
+    "type": "revolute",
+    "parent": "left_arm_link1",
+    "child": "left_arm_link2",
+    "xyz": [
+      -0.000394329270117,
+      7.6664279232e-05,
+      -7.1051631e-08
+    ],
+    "rpy": [
+      1.571723948890298,
+      0.042384630421715,
+      -3.141553348429656
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "left_arm_joint3",
+    "type": "revolute",
+    "parent": "left_arm_link2",
+    "child": "left_arm_link3",
+    "xyz": [
+      -0.001302334628822,
+      0.350597843376111,
+      -0.00012595681204
+    ],
+    "rpy": [
+      1.5715105397947,
+      1.043707601421549,
+      -3.140975377009658
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "left_arm_joint4",
+    "type": "revolute",
+    "parent": "left_arm_link3",
+    "child": "left_arm_link4",
+    "xyz": [
+      0.000683544981526,
+      0.00096079466687,
+      1.153402626e-06
+    ],
+    "rpy": [
+      1.56959583966253,
+      -0.005824123756609,
+      -3.141585661840335
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "left_arm_joint5",
+    "type": "revolute",
+    "parent": "left_arm_link4",
+    "child": "left_arm_link5",
+    "xyz": [
+      -0.000149609787517,
+      0.360970355294453,
+      -0.00108349188765
+    ],
+    "rpy": [
+      -1.573798009476175,
+      0.007420369751906,
+      -2.2273457861e-05
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "left_arm_joint6",
+    "type": "revolute",
+    "parent": "left_arm_link5",
+    "child": "left_arm_link6",
+    "xyz": [
+      -0.00042404659608,
+      -0.000347813741522,
+      -2.46722323e-07
+    ],
+    "rpy": [
+      1.729267151035573,
+      1.566301292495579,
+      0.1584692499343
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "left_arm_joint7",
+    "type": "revolute",
+    "parent": "left_arm_link6",
+    "child": "left_arm_link7",
+    "xyz": [
+      0.000136210811917,
+      0.0,
+      0.0
+    ],
+    "rpy": [
+      1.56843002724405,
+      0.0,
+      0.0
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "left_arm_end_effector_mount_joint",
+    "type": "fixed",
+    "parent": "left_arm_link7",
+    "child": "left_arm_end_effector_mount_link",
+    "xyz": [
+      -0.108687018801081,
+      0.000625253577854,
+      0.000222354153586
+    ],
+    "rpy": [
+      -3.11895481464435,
+      -0.00254276932637,
+      3.133771522271209
+    ],
+    "axis": [
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "name": "torso_right_arm_mount_joint",
+    "type": "fixed",
+    "parent": "torso_base_link",
+    "child": "torso_right_arm_mount_link",
+    "xyz": [
+      -0.207961155052235,
+      0.175209336913723,
+      0.000859770500601
+    ],
+    "rpy": [
+      -2.64134163270425,
+      1.565999411668569,
+      0.499698195495608
+    ],
+    "axis": [
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "name": "right_arm_base_joint",
+    "type": "fixed",
+    "parent": "torso_right_arm_mount_link",
+    "child": "right_arm_base_link",
+    "xyz": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rpy": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "axis": [
+      1.0,
+      0.0,
+      0.0
+    ]
+  },
+  {
+    "name": "right_arm_joint1",
+    "type": "revolute",
+    "parent": "right_arm_base_link",
+    "child": "right_arm_link1",
+    "xyz": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "rpy": [
+      0.0,
+      0.0,
+      -0.523598775598286
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "right_arm_joint2",
+    "type": "revolute",
+    "parent": "right_arm_link1",
+    "child": "right_arm_link2",
+    "xyz": [
+      -0.000310197390499,
+      -3.98166533e-06,
+      -1.3203487e-08
+    ],
+    "rpy": [
+      -1.574114130000926,
+      0.032423769067393,
+      3.141485096358664
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "right_arm_joint3",
+    "type": "revolute",
+    "parent": "right_arm_link2",
+    "child": "right_arm_link3",
+    "xyz": [
+      0.000357130854741,
+      -0.350706992077023,
+      0.000394413255734
+    ],
+    "rpy": [
+      -1.568549641016967,
+      1.046539227294649,
+      -3.139647705756851
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "right_arm_joint4",
+    "type": "revolute",
+    "parent": "right_arm_link3",
+    "child": "right_arm_link4",
+    "xyz": [
+      0.000347360529375,
+      -0.000437101406789,
+      3.53938764e-07
+    ],
+    "rpy": [
+      -1.569986585663233,
+      0.001303674207145,
+      -3.141591597951234
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "right_arm_joint5",
+    "type": "revolute",
+    "parent": "right_arm_link4",
+    "child": "right_arm_link5",
+    "xyz": [
+      -0.000257549497218,
+      -0.361551677485451,
+      0.000318717170232
+    ],
+    "rpy": [
+      -1.569914789951022,
+      0.005033140076804,
+      -3.141588216708959
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "right_arm_joint6",
+    "type": "revolute",
+    "parent": "right_arm_link5",
+    "child": "right_arm_link6",
+    "xyz": [
+      0.000468788953093,
+      -0.000325014982336,
+      6.8625508e-08
+    ],
+    "rpy": [
+      -1.563457747972172,
+      1.54202008623042,
+      -3.134257112884291
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "right_arm_joint7",
+    "type": "revolute",
+    "parent": "right_arm_link6",
+    "child": "right_arm_link7",
+    "xyz": [
+      0.000422399313953,
+      0.0,
+      0.0
+    ],
+    "rpy": [
+      -1.572294172959414,
+      0.0,
+      0.0
+    ],
+    "axis": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  {
+    "name": "right_arm_end_effector_mount_joint",
+    "type": "fixed",
+    "parent": "right_arm_link7",
+    "child": "right_arm_end_effector_mount_link",
+    "xyz": [
+      -0.107437771523738,
+      -0.001044489431467,
+      0.000133888825071
+    ],
+    "rpy": [
+      -3.132391494739326,
+      -0.006967178425754,
+      3.110321162995425
+    ],
+    "axis": [
+      1.0,
+      0.0,
+      0.0
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),V=require('./joint_visual');
+const model=[{name:'right_arm_joint1',type:'revolute',parent:'torso_base_link',child:'r1',xyz:[0,0,0],rpy:[0,0,0],axis:[0,0,1]},{name:'tip',type:'fixed',parent:'r1',child:'end',xyz:[1,0,0],rpy:[0,0,0],axis:[1,0,0]}];
+const states=[{name:'right_arm_joint1',position:0,fresh:true,controllable:true,limits:[-Math.PI,Math.PI]}];
+assert.deepEqual(V.solve(model,states).at(-1).p,[1,0,0]);
+const simulated=V.solve(model,states,{right_arm_joint1:Math.PI/2}).at(-1).p;assert(Math.abs(simulated[0])<1e-10);assert(Math.abs(simulated[1]-1)<1e-10);assert.equal(states[0].position,0);
+assert.equal(V.solve(model,[{...states[0],fresh:false}]).length,0);
+assert.equal(V.targetDelta(states[0],90),90);assert.throws(()=>V.targetDelta(states[0],181));assert.throws(()=>V.targetDelta({...states[0],fresh:false},0));assert.throws(()=>V.targetDelta(states[0],NaN));
+const cal=JSON.parse(fs.readFileSync(__dirname+'/joint_visual_model.json'));
+const both=['left','right'].flatMap(side=>Array.from({length:7},(_,i)=>({name:side+'_arm_joint'+(i+1),position:.1*(i-3),fresh:true})));
+const fk=V.solve(cal,both);for(const side of ['left','right'])assert(fk.find(e=>e.child===side+'_arm_end_effector_mount_link'));
+console.log('PASS: calibrated chains, preview rotation, immutable feedback, stale state and invalid target refusal');

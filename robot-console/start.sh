@@ -10,11 +10,20 @@
 set -u
 cd "$(dirname "$0")"
 
-SOCK=/tmp/kitt-console-live.sock
+SOCK=${ROBOT_SOCK:-/tmp/kitt-console-live.sock}
 URL=http://127.0.0.1:8765
-USER_NAME=galbot
+USER_NAME=${ROBOT_USER:-galbot}
 # 机器人 SSH 主机密钥指纹（公开信息，用于确认"连的是同一台机器"）
-FP=1MH5iIhYyb2gK5Q02SOYqO0Ynil5Xqgh14oqNz/5s6k
+FP=${ROBOT_FINGERPRINT:-1MH5iIhYyb2gK5Q02SOYqO0Ynil5Xqgh14oqNz/5s6k}
+FP=${FP#SHA256:}
+PYTHON=${PYTHON:-python3}
+case "${1:-}" in --help|-h) echo "ROBOT_HOST=<robot-ip> [ROBOT_USER=galbot] [PYTHON=python3] [DRY=1] sh start.sh"; exit 0;; esac
+command -v "$PYTHON" >/dev/null 2>&1 || { echo "请先安装 Python 3.9+"; exit 1; }
+"$PYTHON" -c 'import sys;sys.exit(0 if sys.version_info >= (3,9) else 1)' || { echo "需要 Python 3.9+"; exit 1; }
+for tool in ssh ssh-keyscan ssh-keygen; do command -v "$tool" >/dev/null 2>&1 || { echo "缺少 $tool，请安装 OpenSSH 客户端"; exit 1; }; done
+open_page() {
+  case "$(uname -s)" in Darwin) open "$URL";; *) if command -v xdg-open >/dev/null 2>&1; then xdg-open "$URL"; else echo "请在浏览器打开 $URL"; fi;; esac
+}
 
 fp_of() { # $1=地址 $2=网口
   ssh-keyscan -6 -T 3 -t ed25519 "$1%$2" 2>/dev/null \
@@ -27,7 +36,7 @@ own_macs() { # 本机各网口 MAC，用来排除自己
     [ -n "$m" ] && echo "$i $m"
   done
 }
-OWNS=$(own_macs)
+OWNS=""
 
 TARGET=""
 
@@ -35,6 +44,8 @@ if [ -n "${ROBOT_HOST:-}" ]; then
   TARGET="$USER_NAME@$ROBOT_HOST"
   echo "· 使用指定地址 $ROBOT_HOST"
 else
+  [ "$(uname -s)" = Darwin ] || { echo "Linux/WSL 请指定机器人地址：ROBOT_HOST=<IP> sh start.sh"; exit 1; }
+  OWNS=$(own_macs)
   echo "· 在已连线的网口上寻找机器人…"
   # 主动触发一次邻居发现，填充缓存
   for i in $(ifconfig -l); do
@@ -83,6 +94,10 @@ else
   fi
 fi
 
+if [ -n "${ROBOT_HOST:-}" ]; then
+  f=$(ssh-keyscan -T 4 -t ed25519 "$ROBOT_HOST" 2>/dev/null | ssh-keygen -lf - 2>/dev/null | awk '{print $2}' | sed 's/^SHA256://')
+  [ "$f" = "$FP" ] || { echo "机器人指纹不匹配或无法读取，已停止。请与现场人员核对 ROBOT_FINGERPRINT。"; exit 1; }
+fi
 [ -n "${DRY:-}" ] && { echo "DRY：目标 ${TARGET}，到此为止"; exit 0; }
 
 if ! ssh -S "$SOCK" -O check "$TARGET" 2>/dev/null; then
@@ -93,12 +108,13 @@ if ! ssh -S "$SOCK" -O check "$TARGET" 2>/dev/null; then
 fi
 echo "✓ SSH 主连接就绪（${SOCK}）"
 
-if lsof -nP -iTCP:8765 -sTCP:LISTEN >/dev/null 2>&1; then
+if "$PYTHON" -c 'import socket; s=socket.create_connection(("127.0.0.1",8765),timeout=1); s.close()' >/dev/null 2>&1; then
   echo "! 8765 已有进程在监听，直接打开页面"
-  open "$URL"; exit 0
+  open_page; exit 0
 fi
 
 ROBOT_HOST="${TARGET#*@}"
 export ROBOT_HOST
-( sleep 2; open "$URL" ) >/dev/null 2>&1 &
-exec python3 server.py
+( sleep 2; open_page ) >/dev/null 2>&1 &
+export ROBOT_USER="$USER_NAME" ROBOT_SOCK="$SOCK"
+exec "$PYTHON" -B server.py

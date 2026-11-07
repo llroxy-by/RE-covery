@@ -1,0 +1,4 @@
+# Runtime: Python standard library only; no pip packages required.
+# System prerequisite: OpenSSH client (ssh, ssh-keyscan, ssh-keygen).
+# Robot must already have its compatible G1 SDK 1.10.0 installed.
+# Node.js is optional and used only for offline JavaScript tests.
