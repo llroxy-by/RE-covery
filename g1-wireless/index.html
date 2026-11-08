@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>G1 无线诊断</title>
+<style>
+body{font:17px system-ui;color:#ecf3ff;background:#101824;margin:2rem auto;max-width:54rem;padding:0 1rem}
+section{background:#1d2a3b;border-radius:12px;padding:1rem;margin:1rem 0}
+pre{white-space:pre-wrap;overflow-wrap:anywhere} .muted{color:#bdd0e8}
+button{font:inherit;padding:.65rem;margin:.2rem;touch-action:none;user-select:none}
+</style>
+<h1>Galbot G1 无线诊断</h1>
+<p class="muted">本机只读 · 底盘原地转向、关节点动及腿部运动未启用</p>
+<section><h2>连接状态</h2><pre id="status" aria-live="polite">等待连接</pre></section>
+<section id="simulation">
+<h2>底盘前后移动 · 模拟</h2>
+<p>按住前进或后退，松手停止。也可以聚焦按钮后按住空格。此区域只在浏览器内模拟。</p>
+<button type="button" data-direction="1">前进</button>
+<button type="button" data-direction="-1">后退</button>
+<button type="button" id="sim-stop">停止</button>
+<pre id="sim-speed" aria-live="polite">已停止 · 0.00 m/s</pre>
+<div>模拟位移 <output id="sim-distance">0.000 m</output></div>
+</section>
+<section><h2>底盘里程计</h2><pre id="odom">等待反馈</pre></section>
+<section><h2>关节角度（rad）</h2><pre id="joints">等待反馈</pre></section>
+<script>
+const show = (id, message) => { document.getElementById(id).textContent = message; };
+let velocity = 0;
+let distance = 0;
+let lastChange = performance.now();
+function advance(now) {
+  distance += velocity * (now - lastChange) / 1000;
+  lastChange = now;
+  show('sim-distance', distance.toFixed(3) + ' m');
+}
+function setVelocity(value) {
+  advance(performance.now());
+  velocity = value;
+  show('sim-speed', value === 0 ? '已停止 · 0.00 m/s' : value.toFixed(2) + ' m/s');
+}
+const stopSimulation = () => setVelocity(0);
+for (const button of document.querySelectorAll('[data-direction]')) {
+  const start = () => setVelocity(Number(button.dataset.direction) * 0.02);
+  button.addEventListener('pointerdown', event => {
+    if (!event.isPrimary || event.button !== 0) return;
+    button.setPointerCapture(event.pointerId);
+    start();
+  });
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture', 'blur']) {
+    button.addEventListener(event, stopSimulation);
+  }
+  button.addEventListener('keydown', event => {
+    if (event.code !== 'Space') return;
+    event.preventDefault();
+    if (!event.repeat) start();
+  });
+  button.addEventListener('keyup', event => {
+    if (event.code === 'Space') stopSimulation();
+  });
+}
+document.getElementById('sim-stop').addEventListener('click', stopSimulation);
+window.addEventListener('blur', stopSimulation);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopSimulation();
+});
+setInterval(() => advance(performance.now()), 100);
+async function update() {
+  try {
+    const response = await fetch('/state', {cache:'no-store', signal:AbortSignal.timeout(1500)});
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const data = await response.json();
+    const state = data.fresh ? '收到本轮样本' : '等待反馈或反馈已过期';
+    show('status', [state, data.status, data.host, data.sdk && 'SDK ' + data.sdk,
+      data.shm_free_bytes == null ? '' : '/dev/shm 可用 ' + (data.shm_free_bytes / 1048576).toFixed(1) + ' MiB'
+    ].filter(Boolean).join('\n'));
+    for (const name of ['odom', 'joints']) {
+      show(name, data.fresh && data[name] ? JSON.stringify(data[name], null, 2) : '无有效反馈');
+    }
+  } catch (error) {
+    show('status', '本机诊断服务未响应');
+    show('odom', '无有效反馈');
+    show('joints', '无有效反馈');
+  } finally {
+    setTimeout(update, 700);
+  }
+}
+update();
+</script></html>
+
